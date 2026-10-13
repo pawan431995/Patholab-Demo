@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PathoLab - Web Demo</title>
+  <link rel="icon" href="assets/img/patholab.png">
+  <link rel="stylesheet" href="assets/css/app.css">
+</head>
+<body>
+
+  <!-- Sign-in (mirrors ui/dialogs/login_dialog.py) -->
+  <section id="login" class="login-screen" hidden>
+    <div class="login-card">
+      <div class="login-brand">
+        <img src="assets/img/patholab.png" alt="" class="login-logo">
+        <div>
+          <h1>PathoLab</h1>
+          <p class="muted">Pathology Laboratory Management &middot; v1.0.0 (web demo)</p>
+        </div>
+      </div>
+      <form id="login-form" class="login-form" autocomplete="off">
+        <label class="field"><span>User name</span><input id="login-user" name="username" placeholder="Username"></label>
+        <label class="field"><span>Password</span><input id="login-pass" name="password" type="password" placeholder="Password"></label>
+        <label class="check"><input id="login-show" type="checkbox"> Show password</label>
+        <p id="login-error" class="login-error" hidden></p>
+        <div class="login-actions">
+          <button type="button" id="login-exit">Exit</button>
+          <button type="submit" class="primary">Sign in</button>
+        </div>
+      </form>
+      <div class="demo-box">
+        <div class="demo-title">Demo accounts - pick one to sign in</div>
+        <div id="demo-accounts" class="accounts"></div>
+        <p class="muted small">Passwords: <b>admin123</b> for Administrator, <b>demo123</b> for the other roles. Each role sees a different set of screens and actions, as in the desktop app.</p>
+        <button type="button" id="login-reset" class="link">Reset demo data</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Main window -->
+  <div id="app" class="app" hidden>
+    <nav id="menubar" class="menubar" aria-label="Menu bar"></nav>
+
+    <div class="banner" role="status">
+      <b>Web demo.</b> All data is stored in this browser only and nothing is sent to a server.
+      Reset it from <i>Tools &gt; Data &amp; Backup</i>.
+    </div>
+
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-title">PathoLab</div>
+          <div class="brand-sub">Laboratory Management</div>
+        </div>
+        <div id="nav" class="nav"></div>
+        <div id="sidebar-user" class="sidebar-user"></div>
+      </aside>
+
+      <main class="content">
+        <header class="page-head">
+          <div>
+            <h1 id="page-title" class="page-title"></h1>
+            <p id="page-sub" class="page-sub"></p>
+          </div>
+          <div id="page-actions" class="page-actions"></div>
+        </header>
+        <section id="page-body" class="page-body"></section>
+      </main>
+    </div>
+
+    <footer class="statusbar">
+      <span id="status" class="status-msg">Ready</span>
+      <span class="sb-spacer"></span>
+      <span>Licence: Demo</span>
+      <span id="sb-user">-</span>
+      <span>v1.0.0</span>
+      <span id="sb-lab"></span>
+    </footer>
+  </div>
+
+  <div id="toasts"></div>
+  <div id="print-area" aria-hidden="true"></div>
+
+  <script src="assets/js/store.js"></script>
+  <script src="assets/js/ui.js"></script>
+  <script src="assets/js/screens.js"></script>
+  <script src="assets/js/dialogs.js"></script>
+  <script src="assets/js/app.js"></script>
+</body>
+</html>
