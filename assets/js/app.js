@@ -224,6 +224,7 @@
     });
     $('login-back').addEventListener('click', () => showLanding());
     document.querySelectorAll('[data-open-login]').forEach((b) => b.addEventListener('click', () => showLogin()));
+    document.querySelectorAll('[data-open-portal]').forEach((b) => b.addEventListener('click', () => dialogs.portal()));
     $('login-exit').addEventListener('click', () => ui.toast('In the web demo, close the browser tab to exit.', 'info'));
     $('login-reset').addEventListener('click', () => {
       ui.confirmBox('Reset demo data', 'Replace all demo data with the built-in sample data?', { danger: true, ok: 'Reset' })

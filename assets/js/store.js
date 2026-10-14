@@ -1523,6 +1523,15 @@
       }).sort((a, b) => b.id - a.id);
     },
     turnaround,
+    // Patient portal: a patient matches on MRN and the phone number we hold. Only final reports are shown.
+    portalLookup(mrn, phone) {
+      const digits = (v) => String(v || '').replace(/\D/g, '').slice(-10);
+      const p = S.patients.find((x) => x.mrn === String(mrn || '').trim().toUpperCase());
+      if (!p || digits(phone).length < 10 || digits(p.phone) !== digits(phone)) return null;
+      const orders = S.orders.filter((o) => o.patientId === p.id && o.status !== 'CANCELLED').sort((a, b) => b.id - a.id);
+      const reports = S.reports.filter((r) => r.type === 'Final' && orders.some((o) => o.id === r.orderId));
+      return { patient: p, orders: orders.map((o) => ({ order: o, balance: orderTotals(o).balance })), reports };
+    },
     // Home collections still to visit, in slot order, then by area (last part of the address).
     homeRoute() {
       const isHome = (o) => { const c = S.centres.find((x) => x.id === o.centreId); return !!c && c.code === 'HOME'; };

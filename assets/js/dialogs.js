@@ -988,6 +988,53 @@
     });
   }
 
+  // Patient portal (simulated): a patient finds their own final reports with their patient ID
+  // and the phone number on file. Three wrong tries in one visit lock the form.
+  function portal() {
+    let tries = 0;
+    const ctx = modal({
+      title: 'Patient portal', width: 680,
+      body: `<p class="muted">Enter your patient ID (MRN) and the phone number we have on file to see your final reports and balances.</p>` +
+        `<div class="form-grid">` + ctl('mrn', '', { label: 'Patient ID (MRN)', placeholder: 'P000001' }) +
+        ctl('phone', '', { label: 'Phone number on file' }) + `</div>` +
+        `<p class="muted small">Demo: use any patient's ID and phone number from the Patients screen.</p>` +
+        `<div class="form-error" hidden></div>`,
+      buttons: [
+        { label: 'Close' },
+        { label: 'Find my reports', primary: true, onClick: (c) => {
+          const err = c.body.querySelector('.form-error');
+          const fail = (message) => { err.textContent = message; err.hidden = false; };
+          if (tries >= 3) { fail('Too many attempts. Close this window and try again later.'); return; }
+          const v = readAll(c.body);
+          const found = PL.store.q.portalLookup(v.mrn, v.phone);
+          if (!found) { tries++; fail('We could not match those details. Check the patient ID and phone number.'); return; }
+          c.body.innerHTML = portalResults(found);
+        } },
+      ],
+    });
+    ctx.body.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-view]');
+      if (!b) return;
+      const rec = S.reports.find((r) => r.id === Number(b.dataset.view));
+      if (rec) reportPreview(rec);
+    });
+  }
+  function portalResults(f) {
+    const p = f.patient;
+    const rows = f.orders.map(({ order: o, balance }) => {
+      const rep = f.reports.find((r) => r.orderId === o.id);
+      return `<tr><td><b>${esc(o.orderNo)}</b></td><td>${esc(fdate(o.registeredAt))}</td><td>${esc(label(o.status))}</td>` +
+        `<td class="al-right">${balance > 0.005 ? `<span class="warn-text">${money(balance)} due</span>` : 'Paid'}</td>` +
+        `<td>${rep ? `<button type="button" data-view="${rep.id}">View report</button>` : '<span class="muted">Not ready</span>'}</td></tr>`;
+    }).join('');
+    return `<p>Hello <b>${esc(p.firstName)}</b>. Your patient ID is <b>${esc(p.mrn)}</b>.</p>` +
+      (rows
+        ? `<div class="grid-wrap"><table class="grid"><thead><tr><th>Order</th><th>Registered</th><th>Status</th>` +
+          `<th class="al-right">Balance</th><th>Report</th></tr></thead><tbody>${rows}</tbody></table></div>`
+        : '<p class="muted">No orders on record.</p>') +
+      `<p class="muted small">Reports show final, verified results only. Any balance is paid at the laboratory reception.</p>`;
+  }
+
   function isLocked(u) {
     return !!u.lockedUntil && new Date(u.lockedUntil).getTime() > Date.now();
   }
@@ -1064,6 +1111,6 @@
     deltaComment, whatsapp: whatsappDialog, cloudSync: cloudSyncDialog,
     reportHtml, reportPreview, invoiceHtml, receiptHtml,
     settings, reportDesigner, packages, masters, users, roles, audit: auditDialog,
-    dataTools, changePassword, license, about, forcedPassword,
+    dataTools, changePassword, license, about, forcedPassword, portal,
   };
 })(window.PL = window.PL || {});
