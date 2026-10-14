@@ -173,19 +173,17 @@
     setTimeout(() => $('login-user').focus(), 0);
   }
   function attemptLogin(username, password) {
-    const u = S.users.find((x) => x.username === String(username || '').trim().toLowerCase());
-    if (!u || u.password !== password) {
-      $('login-error').textContent = 'The user name or password is not correct.';
+    const res = svc.login(username, password);
+    if (!res.ok) {
+      $('login-error').textContent = res.message;
       $('login-error').hidden = false;
       $('login-pass').select();
       return;
     }
-    if (!u.active) {
-      $('login-error').textContent = 'This account is inactive. Ask an administrator to activate it.';
-      $('login-error').hidden = false;
+    if (res.expired) {
+      dialogs.forcedPassword(() => showApp(), () => { store.setSession(null); showLogin(); });
       return;
     }
-    store.setSession(u.id);
     showApp();
   }
   function signOut() {

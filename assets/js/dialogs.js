@@ -887,10 +887,15 @@
     listDialog({
       title: 'Manage Users', width: 700,
       load: () => S.users,
-      cols: [{ h: 'User name' }, { h: 'Full name' }, { h: 'Role' }, { h: 'Status' }],
-      row: (u) => [`<b>${esc(u.username)}</b>`, esc(u.fullName), esc(ROLES[u.role].label), u.active ? badge('Active', 'OK') : badge('Inactive', 'muted')],
+      cols: [{ h: 'User name' }, { h: 'Full name' }, { h: 'Role' }, { h: 'Status' }, { h: 'Password set' }],
+      row: (u) => [`<b>${esc(u.username)}</b>`, esc(u.fullName), esc(ROLES[u.role].label),
+        isLocked(u) ? badge('Locked', 'bad') : u.active ? badge('Active', 'OK') : badge('Inactive', 'muted'),
+        esc(fdate(u.passwordChangedAt))],
       actions: [
         { label: () => 'Edit', onClick: (u, redraw) => userForm(u, redraw) },
+        { label: () => 'Unlock', onClick: (u, redraw) => {
+          svc.unlockUser(u.id); redraw(); toast(`${u.username} unlocked`, 'ok');
+        } },
         { label: (u) => (u.active ? 'Deactivate' : 'Activate'), onClick: (u, redraw) => {
           try { svc.toggleUser(u.id); redraw(); toast(`${u.username} ${u.active ? 'activated' : 'deactivated'}`, 'ok'); } catch (e) { alertBox('Users', e.message, 'warn'); }
         } },
@@ -983,6 +988,40 @@
     });
   }
 
+  function isLocked(u) {
+    return !!u.lockedUntil && new Date(u.lockedUntil).getTime() > Date.now();
+  }
+
+  // Shown at sign-in when the password is older than the policy allows. Cannot be dismissed
+  // except by signing out.
+  function forcedPassword(onDone, onCancel) {
+    const u = PL.store.currentUser();
+    modal({
+      title: 'Password expired', width: 440, dismissable: false,
+      body: `<p class="msg">The password for <b>${esc(u ? u.username : '')}</b> is more than ${PL.store.POLICY.passwordDays} days old. ` +
+        `Choose a new one to continue.</p><div class="form-grid">` +
+        ctl('newPw', '', { label: 'New password (min 6)', type: 'password' }) +
+        ctl('confirm', '', { label: 'Confirm new password', type: 'password' }) +
+        `</div><div class="form-error" hidden></div>`,
+      buttons: [
+        { label: 'Sign out', onClick: (c) => { c.close(); onCancel(); } },
+        { label: 'Continue', primary: true, onClick: (c) => {
+          const v = readAll(c.body);
+          try {
+            if (v.newPw !== v.confirm) throw new DomainError('The new passwords do not match.');
+            svc.forcePassword(v.newPw);
+            c.close();
+            toast('Password changed', 'ok');
+            onDone();
+          } catch (e) {
+            if (!(e instanceof DomainError)) throw e;
+            const err = c.body.querySelector('.form-error'); err.textContent = e.message; err.hidden = false;
+          }
+        } },
+      ],
+    });
+  }
+
   function changePassword() {
     const u = PL.store.currentUser();
     form({
@@ -1025,6 +1064,6 @@
     deltaComment, whatsapp: whatsappDialog, cloudSync: cloudSyncDialog,
     reportHtml, reportPreview, invoiceHtml, receiptHtml,
     settings, reportDesigner, packages, masters, users, roles, audit: auditDialog,
-    dataTools, changePassword, license, about,
+    dataTools, changePassword, license, about, forcedPassword,
   };
 })(window.PL = window.PL || {});

@@ -10,6 +10,8 @@
 
   const KEY = 'patholab-demo-v1';
   const DAY = 864e5;
+  // Sign-in policy: lock after repeated wrong passwords; passwords expire after a set number of days.
+  const POLICY = { maxFailed: 5, lockMinutes: 15, passwordDays: 90 };
 
   class DomainError extends Error {}
   const fail = (message) => { throw new DomainError(message); };
@@ -235,7 +237,11 @@
       if (REFLEX[t.code] && !t.reflex) t.reflex = REFLEX[t.code];
       if (DELTA_LIMITS[t.code] != null && t.delta == null) t.delta = DELTA_LIMITS[t.code];
     });
-    S.users.forEach((u) => { if (u.failedLogins == null) { u.failedLogins = 0; u.lockedUntil = null; } });
+    // Existing accounts start with a fresh password date, so nobody is forced to change it on upgrade.
+    S.users.forEach((u) => {
+      if (u.failedLogins == null) { u.failedLogins = 0; u.lockedUntil = null; }
+      if (!u.passwordChangedAt) u.passwordChangedAt = nowIso();
+    });
     S.lab = { gstin: '27ABCDE1234F1Z5', gstRate: 18, sac: '9993', ...S.lab };
   }
 
@@ -421,6 +427,7 @@
         { id: 4, username: 'reception', password: 'demo123', fullName: 'Anita Rao', role: 'RECEPTIONIST', active: true },
       ];
       S.seq.users = 4;
+      S.users.forEach((u) => { u.passwordChangedAt = nowIso(); u.failedLogins = 0; u.lockedUntil = null; });
       S.tests = CATALOG.map((x) => JSON.parse(JSON.stringify(x)));
       S.priceLists = [
         { id: 1, name: 'Standard (catalogue)', isDefault: true, overrides: {} },
@@ -1384,7 +1391,7 @@
         const u = S.users.find((x) => x.id === id);
         if (!u) fail('That user no longer exists.');
         Object.assign(u, { username, fullName, role: d.role });
-        if (d.password) u.password = d.password;
+        if (d.password) { u.password = d.password; u.passwordChangedAt = nowIso(); }
         persist('user.update', username);
       } else {
         if (!d.password || d.password.length < 6) fail('Set a password of at least 6 characters.');
@@ -1407,7 +1414,55 @@
       if (!newPw || newPw.length < 6) fail('The new password must be at least 6 characters.');
       if (newPw === oldPw) fail('Choose a password different from the current one.');
       u.password = newPw;
+      u.passwordChangedAt = nowIso();
       persist('user.password', u.username);
+      save();
+    },
+    // Sign-in with lock-out after repeated failures. A correct password signs the user in and
+    // reports whether the password has expired (the app then asks for a new one).
+    login(username, password) {
+      const u = S.users.find((x) => x.username === String(username || '').trim().toLowerCase());
+      const now = Date.now();
+      if (u && u.lockedUntil && new Date(u.lockedUntil).getTime() > now) {
+        const mins = Math.ceil((new Date(u.lockedUntil).getTime() - now) / 60000);
+        return { ok: false, message: `This account is locked after too many failed sign-ins. Try again in ${mins} minute(s), or ask an administrator to unlock it.` };
+      }
+      if (!u || u.password !== password) {
+        if (u) {
+          u.failedLogins = (u.failedLogins || 0) + 1;
+          if (u.failedLogins >= POLICY.maxFailed) {
+            u.lockedUntil = new Date(now + POLICY.lockMinutes * 60000).toISOString();
+            u.failedLogins = 0;
+            persist('user.locked', u.username);
+          }
+          save();
+        }
+        return { ok: false, message: 'The user name or password is not correct.' };
+      }
+      if (!u.active) return { ok: false, message: 'This account is inactive. Ask an administrator to activate it.' };
+      u.failedLogins = 0;
+      u.lockedUntil = null;
+      setSession(u.id);
+      persist('user.login', u.username);
+      save();
+      return { ok: true, user: u, expired: passwordExpired(u) };
+    },
+    unlockUser(id) {
+      const u = S.users.find((x) => x.id === id);
+      if (!u) fail('That user no longer exists.');
+      u.failedLogins = 0;
+      u.lockedUntil = null;
+      persist('user.unlock', u.username);
+      save();
+    },
+    // Used after sign-in when the password has expired: the user must choose a new one.
+    forcePassword(newPw) {
+      const u = currentUser();
+      if (!u) fail('Sign in first.');
+      if (!newPw || newPw.length < 6) fail('The new password must be at least 6 characters.');
+      u.password = newPw;
+      u.passwordChangedAt = nowIso();
+      persist('user.password_expired', u.username);
       save();
     },
 
@@ -1620,13 +1675,18 @@
     return 'OK';
   };
 
+  // Password expiry: a password older than the policy allows must be changed at sign-in.
+  function passwordExpired(u) {
+    return !!u.passwordChangedAt && Date.now() - new Date(u.passwordChangedAt).getTime() > POLICY.passwordDays * DAY;
+  }
+
   PL.store = {
     KEY, DomainError, fail, pad, label, sum, round2, nowIso, todayKey, monthStartKey, dayKey, inRange,
     ageYears, hoursAgo, DAY,
     ORDER_NEXT, SAMPLE_NEXT, CONTAINER, DEPARTMENTS, KINDS, PERM_GROUPS, PERM_LABEL, ALL_PERMS, ROLES,
     CATALOG, PACKAGES, RANGE_HELP: null,
     S, load, save, reset: () => svc.reset(), svc, q,
-    setSession, restoreSession, currentUser, hasPerm,
+    setSession, restoreSession, currentUser, hasPerm, POLICY, passwordExpired,
     testByCode, patientById, patientName, doctorById, orderById, sampleById, orderTotals, pendingCount,
     orderSummary, computeFlag, rangeText, isCritical, leaves, priceOf, defaultPriceList, verifyAudit,
     commissionDue, inventoryStatus, equipmentStatus: q.equipmentStatus,
