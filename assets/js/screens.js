@@ -366,13 +366,17 @@
   const samples = {
     title: 'Sample Tracking',
     sub: 'Collection, receipt, processing, storage and disposal of specimens',
-    state: { term: '', status: '' },
-    toolbar: () => btn('Collect', 'sCollect', { req: 'samples' }) + btn('Receive', 'sReceive', { req: 'samples' }) +
+    state: { term: '', status: '', tab: 'samples' },
+    toolbar() {
+      if (this.state.tab === 'route') return btn('Mark collected...', 'routeCollect', { primary: true, req: 'route' });
+      return btn('Collect', 'sCollect', { req: 'samples' }) + btn('Receive', 'sReceive', { req: 'samples' }) +
       btn('Start Processing', 'sProcess', { req: 'samples' }) + btn('Store...', 'sStore', { req: 'samples' }) +
       btn('Move...', 'sMove', { req: 'samples' }) + btn('Reject...', 'sReject', { req: 'samples', danger: true }) +
       btn('Request Recollection', 'sRecollect', { req: 'samples' }) + btn('Dispose', 'sDispose', { req: 'samples' }) +
-      btn('History', 'sHistory', { req: 'samples' }) + btn('Print Label', 'sLabel', { req: 'samples' }),
+      btn('History', 'sHistory', { req: 'samples' }) + btn('Print Label', 'sLabel', { req: 'samples' });
+    },
     body() {
+      if (this.state.tab === 'route') return sampleTabs(this) + routeHtml();
       const list = q.samples({ term: this.state.term, status: this.state.status });
       const statusOpts = [['', 'All statuses'], ...Object.keys(SAMPLE_NEXT).map((k) => [k, label(k)])]
         .map(([v, t]) => `<option value="${v}" ${v === this.state.status ? 'selected' : ''}>${esc(t)}</option>`).join('');
@@ -386,7 +390,7 @@
             esc(s.location || '-'), esc(fdtShort(s.collectedAt)), esc(fdtShort(s.receivedAt))],
         };
       });
-      return `<div class="filter-row">` +
+      return sampleTabs(this) + `<div class="filter-row">` +
         `<input id="sm-search" class="search grow" placeholder="Scan or type a sample number, order, MRN or patient name, then Enter" value="${esc(this.state.term)}" data-input="sampleSearch" data-enter="sScan">` +
         `<select data-change="sampleStatus">${statusOpts}</select></div>` +
         card(null, table({
@@ -399,9 +403,25 @@
     },
     inputs: {
       sampleSearch(el) { this.state.term = el.value; PL.app.refresh(true); },
+      // (tabs are buttons; see sampleTab below)
       sampleStatus(el) { this.state.status = el.value; PL.app.refresh(); },
     },
     actions: {
+      sampleTab(el) { this.state.tab = el.dataset.tab; PL.app.refresh(); },
+      routeCollect() {
+        const id = Number(sel('route'));
+        const o = S.orders.find((x) => x.id === id);
+        if (!o) return;
+        const people = S.users.filter((u) => u.active && u.role === 'TECHNICIAN');
+        form({
+          title: `Mark collected - ${o.orderNo}`, width: 460,
+          note: `${o.slot || 'No slot'} - ${o.collectAddress || 'No address'}`,
+          fields: [{ name: 'who', label: 'Collected by (phlebotomist)', type: 'select', required: true, full: true,
+            options: people.map((u) => [u.fullName, u.fullName]) }],
+          submit: 'Mark collected',
+          onSubmit: (v) => { svc.collectHome(o.id, v.who); toast(`${o.orderNo} collected by ${v.who}`, 'ok'); PL.app.refresh(); },
+        });
+      },
       sCollect: () => moveSample('COLLECTED', 'Collected'),
       sReceive: () => moveSample('RECEIVED', 'Received'),
       sProcess: () => moveSample('PROCESSING', 'Processing started'),
@@ -484,6 +504,24 @@
       if (lab) lab.disabled = !s;
     },
   };
+  // Samples screen tabs: the lab's sample list and the home-collection route.
+  function sampleTabs(scr) {
+    return `<div class="tabs">${[['samples', 'Samples'], ['route', 'Home collection route']].map(([k, t]) =>
+      `<button class="tab ${scr.state.tab === k ? 'on' : ''}" data-act="sampleTab" data-tab="${k}">${t}</button>`).join('')}</div>`;
+  }
+  function routeHtml() {
+    const list = q.homeRoute();
+    const rows = list.map((o) => {
+      const p = patientById(o.patientId);
+      return { id: o.id, cells: [esc(o.slot || '-'), `<b>${esc(o.orderNo)}</b>`, esc(patientName(p)), esc(o.collectAddress || '-'),
+        esc(p && p.phone ? p.phone : '-'), `<span class="num">${o.tests.length}</span>`, badge(label(o.status), o.status)] };
+    });
+    return card(`Home collections to visit (${list.length})`, table({
+      id: 'route', selected: sel('route'), empty: 'No home collections waiting. Orders for the Home Collection centre appear here.',
+      cols: [{ h: 'Slot' }, { h: 'Order' }, { h: 'Patient' }, { h: 'Address' }, { h: 'Phone' }, { h: 'Tests', align: 'right' }, { h: 'Status' }],
+      rows,
+    })) + `<p class="muted small">Sorted by time slot, then by area. Select a visit and press Mark collected to record who collected it.</p>`;
+  }
   function selectedSample() {
     const id = sel('samples');
     return id ? sampleById(Number(id)) : null;

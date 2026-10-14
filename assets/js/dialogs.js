@@ -147,6 +147,9 @@
       ctl('branchId', 1, { label: 'Branch', select: S.branches.map((b) => [b.id, b.name]) }) +
       ctl('priceListId', plist.id, { label: 'Price list', select: S.priceLists.map((p) => [p.id, p.name]) }) +
       ctl('priority', 'ROUTINE', { label: 'Priority', select: [['ROUTINE', 'Routine'], ['URGENT', 'Urgent'], ['STAT', 'STAT']] }) +
+      ctl('slot', '', { label: 'Home collection slot (if collected at home)', blank: 'Not a home collection',
+        select: ['07:00-09:00', '09:00-11:00', '11:00-13:00', '16:00-18:00'].map((x) => [x, x]) }) +
+      ctl('collectAddress', '', { label: 'Collection address (blank = patient address)', full: false }) +
       ctl('clinicalHistory', '', { label: 'Clinical history', textarea: true, full: true, rows: 2 }) +
       `</div>` +
       `<div class="split-2 gap-top">` +
@@ -174,7 +177,8 @@
               const order = svc.createOrder({
                 patientId: Number(root.querySelector('#no-patient').value), doctorId: val('doctorId'), centreId: val('centreId'),
                 branchId: val('branchId'), priceListId: val('priceListId'), priority: val('priority'),
-                clinicalHistory: val('clinicalHistory'), testCodes, packageIds, discount: val('discount'),
+                clinicalHistory: val('clinicalHistory'), slot: val('slot'), collectAddress: val('collectAddress'),
+                testCodes, packageIds, discount: val('discount'),
                 paid: val('paid'), method: val('method'), reference: val('reference'),
               });
               c.close();

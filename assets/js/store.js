@@ -500,6 +500,13 @@
       const o11 = make(0, 0, ['MAL'], 'ROUTINE', 0.5, 0);
       make(3, 1, ['HBSAG', 'VITD'], 'ROUTINE', 10, 0);
       make(5, 2, ['CULT'], 'ROUTINE', 80, 0); // culture is due in 72 h: already overdue
+      // Home collections waiting on the route (centre code HOME).
+      [[4, '07:00-09:00', 'B-14 Lake View Road, Sector 9'], [6, '09:00-11:00', 'Flat 302, Green Park Society, Sector 5']]
+        .forEach(([pi, slot, address]) => {
+          const ho = svc.createOrder({ patientId: pts[pi].id, doctorId: 2, centreId: 3, branchId: 1, priceListId: 1, priority: 'ROUTINE',
+            testCodes: ['CBC', 'RBS'], packageIds: [], discount: 0, paid: 0, slot, collectAddress: address });
+          ho.registeredAt = hoursAgo(1.5);
+        });
 
       // Results entry moves an order REGISTERED -> COLLECTED -> IN_PROGRESS on its own.
       fillAll(o4, true); svc.generateReport(o4.id, false);
@@ -777,6 +784,9 @@
         priceListId: plist.id, priority: d.priority || 'ROUTINE', clinicalHistory: d.clinicalHistory || '',
         lines, tests, discount, gross, net, payments: [], status: 'REGISTERED',
         registeredAt: nowIso(), results: {}, reportedAt: null, cancelReason: '',
+        // Home collection: time slot, address to visit, and who collected (set on the route).
+        slot: (d.slot || '').trim(), collectAddress: (d.collectAddress || '').trim() || patient.address || '',
+        phlebotomist: '', collectedAt: null,
       };
       S.orders.push(order);
       [...new Set(tests.map((c) => testByCode(c).specimen))].forEach((specimen) => {
@@ -824,6 +834,25 @@
     },
 
     // samples
+    // Home collection: the phlebotomist reaches the address and collects. Pending samples
+    // on the order become collected in one step.
+    collectHome(orderId, phlebotomist) {
+      const o = orderById(orderId);
+      const c = S.centres.find((x) => x.id === o.centreId);
+      if (!c || c.code !== 'HOME') fail('This order is not a home collection.');
+      if (!phlebotomist) fail('Choose the phlebotomist who collected the sample.');
+      if (o.status !== 'REGISTERED') fail('This order has already been collected.');
+      o.status = 'COLLECTED';
+      o.phlebotomist = phlebotomist;
+      o.collectedAt = nowIso();
+      S.samples.filter((s) => s.orderId === o.id && s.status === 'PENDING').forEach((s) => {
+        s.status = 'COLLECTED';
+        s.collectedAt = nowIso();
+        s.history.push({ at: nowIso(), event: `Collected by ${phlebotomist} (home collection)` });
+      });
+      persist('order.collect_home', `${o.orderNo} by ${phlebotomist}`);
+      save();
+    },
     moveSample(id, target, extra = {}) {
       const s = sampleById(id);
       if (!(SAMPLE_NEXT[s.status] || []).includes(target)) fail(`A sample that is ${label(s.status).toLowerCase()} cannot be moved to ${label(target).toLowerCase()}.`);
@@ -1439,6 +1468,13 @@
       }).sort((a, b) => b.id - a.id);
     },
     turnaround,
+    // Home collections still to visit, in slot order, then by area (last part of the address).
+    homeRoute() {
+      const isHome = (o) => { const c = S.centres.find((x) => x.id === o.centreId); return !!c && c.code === 'HOME'; };
+      const area = (o) => { const parts = (o.collectAddress || '').split(',').map((x) => x.trim()).filter(Boolean); return parts.length ? parts[parts.length - 1] : ''; };
+      return S.orders.filter((o) => isHome(o) && o.status === 'REGISTERED')
+        .sort((a, b) => (a.slot || '').localeCompare(b.slot || '') || area(a).localeCompare(area(b)) || a.id - b.id);
+    },
     // Numeric tests this patient has results for (for the trend picker).
     trendTests(patientId) {
       const codes = new Set();
