@@ -425,7 +425,7 @@ body.printing #print-area { display: block; }
 .label-sheet .barcode { display: block; width: 100%; height: auto; margin: 2px 0; }
 
 /* result trend chart */
-.chart { width: 100%; height: auto; display: block; }
+.chart { width: 100%; max-width: 680px; height: auto; display: block; }
 .chart .gl { stroke: var(--border); stroke-width: 1; }
 .chart .gt { font-size: 11px; fill: var(--muted); }
 .chart .band { fill: #DCFCE7; }

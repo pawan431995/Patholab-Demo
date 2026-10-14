@@ -86,6 +86,31 @@ Signing in on another browser or device starts from the built-in sample data.
 - Licence activation is not applicable, and roles are read-only.
 - Passwords are stored in plain text in the browser. This is a demo, not a secure system.
 
+## Added in the latest pass
+
+See [FEATURE_GAPS.md](FEATURE_GAPS.md) for the market comparison behind these.
+
+- **Barcodes on sample labels**: Code 128, the same symbology the desktop label printer uses.
+- **Overdue turnaround alerts**: each order is due when its longest test turnaround has passed.
+  Overdue orders are highlighted on the dashboard worklist and counted in a tile.
+- **Result trend graph**: on **Patients**, pick a patient and a numeric test to see every saved
+  result over time, with the reference band and flags.
+- **Reflex testing**: a saved result that meets a rule adds follow-up tests to the same order,
+  billed and given a sample. Example: fasting glucose above 125 adds HbA1c; an abnormal TSH adds
+  free T4.
+- **GST tax invoices**: set the GSTIN, GST rate and SAC code under **Tools > Settings >
+  Laboratory**. The invoice shows the taxable value and equal CGST and SGST. A rate of 0 turns it
+  off. Catalogue prices are treated as GST-inclusive.
+- **Home-collection route**: on **Sample Tracking**, the "Home collection route" tab lists home
+  visits by time slot and area. Record who collected each visit, and its samples are collected in
+  one step. Set a slot and address on new orders.
+- **Patient report portal**: the landing page's **Patient portal** button lets a patient see their
+  final reports and balances with their patient ID and the phone number on file. Three wrong tries
+  lock the form. This is simulated, with no real patient login.
+- **Account lock-out and password expiry**: five wrong passwords lock an account for 15 minutes,
+  and an administrator can unlock it under **Tools > Manage Users**. A password older than 90 days
+  must be changed at sign-in.
+
 ## Notice
 
 The demo data is fictional. This is not for clinical use.
