@@ -537,17 +537,36 @@
       (S.report.sections.clinicalHistory && o.clinicalHistory ? `<p><b>Clinical history:</b> ${esc(o.clinicalHistory)}</p>` : '') +
       sections + sig + signedLine + `<p class="rp-foot">${esc(S.report.footer)}</p></div>`;
   }
+  // GST: catalogue prices include GST. The invoice splits the net into taxable value and
+  // equal CGST and SGST (intra-state). A rate of 0 turns the breakdown off.
+  function gstBreakdown(net, rate) {
+    const r2 = (n) => Math.round(n * 100) / 100;
+    const taxable = rate > 0 ? r2(net / (1 + rate / 100)) : net;
+    const tax = r2(net - taxable);
+    const cgst = r2(tax / 2);
+    return { taxable, tax, cgst, sgst: r2(tax - cgst), rate }; // SGST takes the remainder so the parts add up
+  }
   function invoiceHtml(o) {
     const p = patientById(o.patientId);
     const t = orderTotals(o);
-    return `<div class="rp-doc">${letterhead()}<div class="rp-title">Invoice</div>` +
-      `<table class="rp-meta"><tr><td><b>Invoice for</b></td><td>${esc(patientName(p))} (${esc(p.mrn)})</td><td><b>Order</b></td><td>${esc(o.orderNo)}</td></tr>` +
-      `<tr><td><b>Date</b></td><td>${esc(fdt(o.registeredAt))}</td><td><b>Status</b></td><td>${esc(label(t.payment))}</td></tr></table>` +
+    const g = gstBreakdown(o.net, Number(S.lab.gstRate) || 0);
+    const gstRows = g.rate > 0
+      ? `<tr><td>Taxable value</td><td class="al-right">${money(g.taxable)}</td></tr>` +
+        `<tr><td>CGST @ ${g.rate / 2}%</td><td class="al-right">${money(g.cgst)}</td></tr>` +
+        `<tr><td>SGST @ ${g.rate / 2}%</td><td class="al-right">${money(g.sgst)}</td></tr>`
+      : '';
+    const gstHead = g.rate > 0
+      ? `<tr><td><b>GSTIN</b></td><td>${esc(S.lab.gstin || '-')}</td><td><b>SAC</b></td><td>${esc(S.lab.sac || '-')}</td></tr>` : '';
+    return `<div class="rp-doc">${letterhead()}<div class="rp-title">${g.rate > 0 ? 'Tax Invoice' : 'Invoice'}</div>` +
+      `<table class="rp-meta"><tr><td><b>Invoice for</b></td><td>${esc(patientName(p))} (${esc(p.mrn)})</td><td><b>Invoice no.</b></td><td>INV-${esc(o.orderNo)}</td></tr>` +
+      `<tr><td><b>Order</b></td><td>${esc(o.orderNo)}</td><td><b>Date</b></td><td>${esc(fdt(o.registeredAt))}</td></tr>` +
+      `<tr><td><b>Status</b></td><td>${esc(label(t.payment))}</td><td></td><td></td></tr>${gstHead}</table>` +
       `<table class="rp-table"><thead><tr><th>Item</th><th class="al-right">Amount</th></tr></thead><tbody>` +
       o.lines.map((l) => `<tr><td>${esc(l.name)}</td><td class="al-right">${money(l.price)}</td></tr>`).join('') +
       `<tr><td>Gross</td><td class="al-right">${money(o.gross)}</td></tr>` +
       `<tr><td>Discount</td><td class="al-right">${money(-o.discount)}</td></tr>` +
-      `<tr><td><b>Net payable</b></td><td class="al-right"><b>${money(o.net)}</b></td></tr>` +
+      `<tr><td><b>Net payable${g.rate > 0 ? ' (incl. GST)' : ''}</b></td><td class="al-right"><b>${money(o.net)}</b></td></tr>` +
+      gstRows +
       `<tr><td>Paid</td><td class="al-right">${money(t.paid)}</td></tr>` +
       `<tr><td><b>Balance</b></td><td class="al-right"><b>${money(t.balance)}</b></td></tr></tbody></table>` +
       `<p class="rp-foot">${esc(S.report.footer)}</p></div>`;
@@ -694,7 +713,10 @@
         { title: 'Laboratory', html: `<div class="form-grid">` + ctl('lab.name', S.lab.name, { label: 'Laboratory name', full: true }) +
           ctl('lab.address', S.lab.address, { label: 'Address', full: true, textarea: true, rows: 2 }) +
           ctl('lab.phone', S.lab.phone, { label: 'Phone' }) + ctl('lab.email', S.lab.email, { label: 'E-mail' }) +
-          ctl('lab.currency', S.lab.currency, { label: 'Currency', select: [['INR', 'Indian rupee (INR)'], ['USD', 'US dollar (USD)'], ['EUR', 'Euro (EUR)'], ['AED', 'UAE dirham (AED)']] }) + `</div>` },
+          ctl('lab.currency', S.lab.currency, { label: 'Currency', select: [['INR', 'Indian rupee (INR)'], ['USD', 'US dollar (USD)'], ['EUR', 'Euro (EUR)'], ['AED', 'UAE dirham (AED)']] }) +
+          ctl('lab.gstin', S.lab.gstin || '', { label: 'GSTIN (shown on invoices)' }) +
+          ctl('lab.gstRate', S.lab.gstRate ?? 18, { label: 'GST rate on tests (%, 0 = no GST)', type: 'number' }) +
+          ctl('lab.sac', S.lab.sac || '9993', { label: 'SAC code' }) + `</div>` },
         { title: 'Reports', html: `<div class="form-grid">` + check('report.letterhead', S.report.letterhead, 'Print letterhead') +
           ctl('report.footer', S.report.footer, { label: 'Footer text', textarea: true, full: true, rows: 2 }) +
           check('report.sections.clinicalHistory', S.report.sections.clinicalHistory, 'Show clinical history') +
@@ -711,6 +733,7 @@
       onSave: (v) => {
         Object.assign(S.lab, v.lab);
         S.lab.currency = v.lab.currency;
+        S.lab.gstRate = Math.min(100, Math.max(0, Number(v.lab.gstRate) || 0));
         S.report = { ...S.report, letterhead: !!v.report.letterhead, footer: v.report.footer, sections: { ...S.report.sections, ...v.report.sections } };
         S.email = { ...S.email, ...v.email, port: Number(v.email.port) || 587, tls: !!v.email.tls };
         S.app = { ...S.app, backupEnabled: !!v.app.backupEnabled, backupTime: v.app.backupTime, backupKeep: Number(v.app.backupKeep) || 10, backupOnExit: !!v.app.backupOnExit };
