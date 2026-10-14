@@ -35,7 +35,22 @@ No build step, no server, no dependencies. It runs fully offline.
 - **Sample Tracking**: collect, receive, process, store, move, reject, recollection,
   dispose, history and label printing, with the same allowed transitions as the desktop app.
 - **Lab Operations**: critical values, outsourced tests, inventory with lots and expiry
-  (FEFO issue), quality control with z-score rules, equipment and service log, analyser CSV import.
+  (FEFO issue), quality control with z-score rules, equipment and service log, analyser import
+  (CSV, ASTM E1394 and HL7 v2 ORU, with a preview before anything is saved).
+- **Previous results and delta check**: result entry shows the patient's previous verified
+  value and the percentage change. A change beyond the limit for that test (for example
+  haemoglobin over 15%) needs a comment before the result can be verified.
+- **Digital signatures**: final reports carry a signature code computed from the verified
+  results. **Reports > Verify Signature** shows whether the results still match it, so an
+  edit made after signing is detected.
+- **WhatsApp messaging** (simulated): report-ready messages, payment reminders and, when the
+  laboratory allows it, the final report PDF itself, sent only to patients who have agreed.
+  Set up under **Tools > WhatsApp Messaging**. Sending a PDF is off by default and asks for
+  confirmation each time (**Reports > Send on WhatsApp**). Nothing is sent to a real phone in
+  the demo; the message log shows what would have gone out.
+- **Cloud database and sync** (simulated): **Tools > Cloud Database & Sync** shows where the
+  desktop app would connect (PostgreSQL or MySQL, on a server reachable over the network) and
+  how it syncs. The demo does not connect to any server.
 - **Test Catalog**: search, add and edit tests, reference ranges, panels, prices.
 - **Reports**: history, preview, regenerate, print or save as PDF.
 - **Billing & Finance**: dues, receipts, invoices, doctor commission and payouts,
@@ -58,7 +73,13 @@ Signing in on another browser or device starts from the built-in sample data.
 
 - E-mail is simulated (the dialog confirms it; nothing is sent).
 - PDFs come from the browser's print dialog (choose "Save as PDF").
-- Only CSV analyser import is available; ASTM and HL7 are shown as desktop-only.
+- Analyser import reads files the user loads. The desktop app also receives ASTM and HL7 from
+  a serial or network connection to the analyser, which a browser cannot do.
+- WhatsApp messages and cloud sync are simulated. The desktop app sends real messages through
+  the WhatsApp Business Cloud API and syncs with the lab's own PostgreSQL or MySQL server, with
+  the local SQLite database kept as the working copy.
+- Digital signatures here are a checksum of the results, not a cryptographic signature. The
+  desktop app signs reports with an Ed25519 key.
 - Culture and sensitivity is entered as descriptive text.
 - The report designer offers toggles and footer text, not drag-and-drop layout.
 - Backups are manual downloads; there is no scheduled backup.

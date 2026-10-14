@@ -105,6 +105,8 @@
         { name: 'email', label: 'E-mail', value: p ? p.email : '' },
         { name: 'bloodGroup', label: 'Blood group', type: 'select', value: p ? p.bloodGroup : '', options: [['', '-'], ...['A Positive', 'A Negative', 'B Positive', 'B Negative', 'AB Positive', 'AB Negative', 'O Positive', 'O Negative'].map((x) => [x, x])] },
         { name: 'address', label: 'Address', type: 'textarea', full: true, value: p ? p.address : '' },
+        { name: 'whatsappConsent', label: 'WhatsApp messages', type: 'select', full: true, value: p && p.whatsappConsent ? '1' : '0',
+          options: [['0', 'Not agreed (no WhatsApp messages)'], ['1', 'Patient agrees to receive WhatsApp messages']] },
         { name: 'notes', label: 'Notes', type: 'textarea', full: true, value: p ? p.notes : '' },
       ],
       onSubmit: (v) => {
@@ -512,7 +514,9 @@
         if (!r) return `<tr><td>${esc(t.name)}</td><td colspan="4" class="muted">Pending</td></tr>`;
         const flag = r.flag && r.flag !== 'NORMAL' && r.flag !== 'NOT_APPLICABLE' ? ` <b>${esc(PL.ui.FLAG_SYMBOL[r.flag] || '')}</b>` : '';
         const shown = t.kind === 'desc' || t.kind === 'text' ? esc(r.value).replace(/\n/g, '<br>') : esc(r.value) + flag;
-        return `<tr><td>${esc(t.name)}</td><td class="${isCritical(r.flag) ? 'crit' : ''}">${shown}</td>` +
+        const prevLine = r.prev ? `<div class="muted small">Previous ${esc(r.prev.text)} (${esc(fdate(r.prev.at))})` +
+          (r.delta != null ? `, change ${r.delta > 0 ? '+' : ''}${r.delta}%` : '') + '</div>' : '';
+        return `<tr><td>${esc(t.name)}</td><td class="${isCritical(r.flag) ? 'crit' : ''}">${shown}${prevLine}</td>` +
           `<td>${esc(t.unit || '')}</td><td>${esc(rangeText(t, p))}</td><td>${esc(r.status === 'VERIFIED' ? 'Verified' : 'Entered')}</td></tr>`;
       }).join('');
       return `<h4>${esc(dept)}</h4><table class="rp-table"><thead><tr><th>Investigation</th><th>Result</th><th>Unit</th><th>Reference interval</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>`;
@@ -521,6 +525,8 @@
     const signer = verifiedBy.length ? [...new Set(verifiedBy)].join(', ') : '-';
     const sig = S.report.sections.signatures ? `<div class="rp-sign"><div><div class="rp-line"></div>Technician</div>` +
       `<div><div class="rp-line"></div>Verified by: ${esc(signer)}</div></div>` : '';
+    const signedLine = rec.signature ? `<p class="small">Digital signature: <b class="mono">${esc(rec.signature)}</b>. ` +
+      `Check it in PathoLab (Reports &gt; Verify signature).</p>` : '';
     return `<div class="rp-doc ${provisional ? 'provisional' : ''}">${provisional ? '<div class="rp-watermark">PROVISIONAL</div>' : ''}` +
       letterhead() +
       `<table class="rp-meta"><tr><td><b>Patient</b></td><td>${esc(patientName(p))}</td><td><b>MRN</b></td><td>${esc(p.mrn)}</td></tr>` +
@@ -529,7 +535,7 @@
       `<td><b>Registered</b></td><td>${esc(fdt(o.registeredAt))}</td></tr>` +
       `<tr><td><b>Report type</b></td><td>${esc(rec.type)}</td><td><b>Reported</b></td><td>${esc(fdt(rec.at))}</td></tr></table>` +
       (S.report.sections.clinicalHistory && o.clinicalHistory ? `<p><b>Clinical history:</b> ${esc(o.clinicalHistory)}</p>` : '') +
-      sections + sig + `<p class="rp-foot">${esc(S.report.footer)}</p></div>`;
+      sections + sig + signedLine + `<p class="rp-foot">${esc(S.report.footer)}</p></div>`;
   }
   function invoiceHtml(o) {
     const p = patientById(o.patientId);
@@ -564,6 +570,119 @@
         { label: 'Close' },
         { label: 'Print / Save as PDF', primary: true, onClick: () => printHtml(reportHtml(rec)) },
       ],
+    });
+  }
+
+  // A flagged delta (change from the previous verified result beyond the limit) needs a comment before verification.
+  function deltaComment(o, codes) {
+    const rows = codes.map((code) => {
+      const def = testByCode(code);
+      const r = o.results[code];
+      const prev = r.prev ? r.prev.text : '-';
+      return `<div class="field full"><span>${esc(def.name)}: ${esc(prev)} &rarr; ${esc(r.value)} ` +
+        `(${r.delta > 0 ? '+' : ''}${r.delta}%)</span>` +
+        `<textarea data-cmt="${esc(code)}" rows="2" placeholder="Why did this change? e.g. repeat sample confirmed, clinical update"></textarea></div>`;
+    }).join('');
+    modal({
+      title: 'Delta check - comment required', width: 560,
+      body: `<p class="muted">These results differ from the patient's previous verified result by more than the allowed limit. ` +
+        `Add a comment for each one, then verify.</p><div class="form-grid">${rows}</div><div class="form-error" hidden></div>`,
+      buttons: [{ label: 'Cancel' }, {
+        label: 'Save comments and verify', primary: true, onClick: (c) => {
+          const err = c.body.querySelector('.form-error');
+          const comments = {};
+          c.body.querySelectorAll('[data-cmt]').forEach((el) => { comments[el.dataset.cmt] = el.value.trim(); });
+          if (codes.some((code) => !comments[code])) { err.textContent = 'Enter a comment for every flagged result.'; err.hidden = false; return; }
+          try {
+            svc.saveResults(o.id, codes.map((code) => ({ code, value: o.results[code].value, comment: comments[code] })));
+            const n = svc.verifyResults(o.id);
+            c.close(); toast(`Verified ${n} result(s)`, 'ok'); PL.app.refresh();
+          } catch (e) {
+            if (!(e instanceof DomainError)) throw e;
+            err.textContent = e.message; err.hidden = false;
+          }
+        },
+      }],
+    });
+  }
+
+  // ---- WhatsApp and cloud database (simulated in the demo) ------------------------------
+  function whatsappDialog() {
+    const w = S.whatsapp;
+    const logHtml = () => table({ id: 'wa-log', empty: 'No messages yet.',
+      cols: [{ h: 'When' }, { h: 'Order' }, { h: 'Template' }, { h: 'To' }, { h: 'Status' }, { h: 'Detail' }],
+      rows: S.messages.slice().reverse().slice(0, 50).map((m) => ({ id: m.id, cells: [
+        esc(fdt(m.at)), esc(m.orderNo || '-'), `<span class="muted mono">${esc(m.template)}</span>`, esc(m.to),
+        m.status === 'SENT' ? badge('Sent', 'OK') : badge(label(m.status), 'muted'), `<span class="small">${esc(m.detail)}</span>`] })) });
+    const ctx = tabbed({
+      title: 'WhatsApp Messaging', width: 760,
+      tabs: [
+        { title: 'Connection', html: `<div class="form-grid">` +
+          check('wa.enabled', w.enabled, 'Send WhatsApp messages (only to patients who agreed)') +
+          ctl('wa.phoneNumberId', w.phoneNumberId, { label: 'Phone number ID (from Meta)' }) +
+          ctl('wa.apiVersion', w.apiVersion, { label: 'Graph API version' }) +
+          ctl('wa.countryCode', w.countryCode, { label: 'Default country code (without +)' }) +
+          ctl('wa.language', w.language, { label: 'Template language' }) +
+          `<p class="muted full small">The access token is kept in Windows Credential Manager on the desktop. It is never stored in settings or in the message log. This demo does not contact Meta.</p></div>` },
+        { title: 'Templates', html: `<div class="form-grid">` +
+          ctl('wa.templateReport', w.templateReport, { label: 'Report ready template', full: true }) +
+          ctl('wa.templatePayment', w.templatePayment, { label: 'Payment reminder template', full: true }) +
+          check('wa.sendReportPdf', w.sendReportPdf, 'Allow sending report PDFs (they contain results) to patients who agreed') +
+          ctl('wa.templateDocument', w.templateDocument, { label: 'Report PDF template (document header)', full: true }) +
+          `<p class="muted full small">Templates must be approved in Meta Business Manager. The report-ready message carries only the patient's first name, order number and lab name. A report PDF is sent only when the switch above is on, one report at a time, after confirmation.</p></div>` },
+        { title: 'Test & log', html: `<div class="form-grid">` +
+          ctl('test.phone', '', { label: 'Test phone number (saved settings are used)', full: true, placeholder: 'e.g. 98765 43210' }) +
+          `</div><div class="toolbar-row"><button type="button" data-wa-test>Send test message</button></div>` +
+          `<div class="wa-log" data-wa-log>${logHtml()}</div>` },
+      ],
+      onSave: (v) => { svc.saveWhatsapp(v.wa); toast('WhatsApp settings saved', 'ok'); },
+    });
+    ctx.body.addEventListener('click', (e) => {
+      if (!e.target.closest('[data-wa-test]')) return;
+      const err = ctx.body.querySelector('.form-error');
+      try {
+        const id = svc.testWhatsapp(ctx.body.querySelector('[data-k="test.phone"]').value);
+        toast(`Test message sent (${id})`, 'ok');
+        ctx.body.querySelector('[data-wa-log]').innerHTML = logHtml();
+        err.hidden = true;
+      } catch (ex) {
+        if (!(ex instanceof DomainError)) throw ex;
+        err.textContent = ex.message; err.hidden = false;
+      }
+    });
+  }
+
+  function cloudSyncDialog() {
+    const cfg = S.sync;
+    const ctx = tabbed({
+      title: 'Cloud Database & Sync', width: 680,
+      tabs: [
+        { title: 'Server', html: `<div class="form-grid">` +
+          ctl('sync.engine', cfg.engine, { label: 'Database engine', select: [['postgresql', 'PostgreSQL'], ['mysql', 'MySQL / MariaDB']] }) +
+          check('sync.tls', cfg.tls, 'Require TLS (recommended for any server reached over the internet)') +
+          ctl('sync.host', cfg.host, { label: 'Host name or IP address', full: true, placeholder: 'e.g. 192.168.1.20 or db.example.com' }) +
+          ctl('sync.port', cfg.port, { label: 'Port', type: 'number', step: '1' }) +
+          ctl('sync.database', cfg.database, { label: 'Database name' }) +
+          ctl('sync.user', cfg.user, { label: 'User name', full: true }) +
+          `<p class="muted full small">Every branch uses the same server and database. The password is stored in Windows Credential Manager on each computer, not in the settings file. This demo does not connect to any server.</p></div>` },
+        { title: 'Status', html: `<div class="stack"><table class="kv">` +
+          `<tr><td>Mode</td><td>Local SQLite database, kept in step with the cloud database</td></tr>` +
+          `<tr><td>Schedule</td><td>At startup, then every hour while the app is open</td></tr>` +
+          `<tr><td>Last sync</td><td>${cfg.lastSync ? esc(fdt(cfg.lastSync)) : 'Never'}</td></tr>` +
+          `<tr><td>Last result</td><td>${esc(cfg.lastResult || '-')}</td></tr></table>` +
+          `<div class="toolbar-row"><button type="button" data-sync-test>Test connection</button>` +
+          `<button type="button" class="primary" data-sync-now>Sync now</button></div>` +
+          `<p class="muted small" data-sync-out></p></div>` },
+      ],
+      onSave: (v) => { svc.saveSync(v.sync); toast('Cloud database settings saved', 'ok'); },
+    });
+    ctx.body.addEventListener('click', (e) => {
+      const out = ctx.body.querySelector('[data-sync-out]');
+      const run = (fn) => {
+        try { out.textContent = fn(); } catch (ex) { if (!(ex instanceof DomainError)) throw ex; out.textContent = ex.message; }
+      };
+      if (e.target.closest('[data-sync-test]')) run(() => svc.testSync());
+      if (e.target.closest('[data-sync-now]')) run(() => { const msg = svc.syncNow(); toast('Sync finished (demo)', 'ok'); return msg; });
     });
   }
 
@@ -876,6 +995,7 @@
     newOrder, receivePayment, notifyCritical, criticalAlert, editTest, sendOut,
     item, stockIn, stockOut, stockCount, qc: qcDialog, equipment: equipmentDialog, equipmentLog,
     commissionRule, payout, expense,
+    deltaComment, whatsapp: whatsappDialog, cloudSync: cloudSyncDialog,
     reportHtml, reportPreview, invoiceHtml, receiptHtml,
     settings, reportDesigner, packages, masters, users, roles, audit: auditDialog,
     dataTools, changePassword, license, about,

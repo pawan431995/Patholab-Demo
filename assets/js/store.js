@@ -34,6 +34,7 @@
   const label = (v) => (v ? String(v).replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase()) : '-');
   const sum = (arr) => arr.reduce((a, b) => a + (Number(b) || 0), 0);
   const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+  const round1 = (n) => Math.round((Number(n) || 0) * 10) / 10;
 
   const ageYears = (p) => {
     if (p.dob) return Math.floor((Date.now() - new Date(p.dob).getTime()) / (365.25 * DAY));
@@ -134,7 +135,7 @@
 
   const t = (code, name, dept, kind, unit, specimen, price, o = {}) => ({
     code, name, dept, kind, unit: unit || '', specimen: specimen || '', price, tat: 24,
-    ranges: [], choices: null, normal: '', children: null, active: true, ...o,
+    ranges: [], choices: null, normal: '', children: null, active: true, delta: null, ...o,
   });
   const RG = (g, lo, hi, cl, ch, printed) => ({ g, lo, hi, cl, ch, printed: printed || '' });
   const H = 'Hematology', B = 'Biochemistry', I = 'Immunoassay', SE = 'Serology',
@@ -191,6 +192,11 @@
   ];
   CATALOG.forEach((x) => { if (x.kind === 'desc') x.tat = x.tat || 72; });
 
+  // Delta checks: a change from the patient's previous verified value larger than this
+  // percentage needs a comment before the result can be verified (as in the desktop app).
+  const DELTA_LIMITS = { HB: 15, CREA: 25, WBC: 30, TSH: 40 };
+  CATALOG.forEach((x) => { if (DELTA_LIMITS[x.code] != null) x.delta = DELTA_LIMITS[x.code]; });
+
   const PACKAGES = [
     { name: 'Basic Health Check', price: 999, tests: ['CBC', 'FBS', 'CREA', 'LFT', 'LIPID'] },
     { name: 'Thyroid Screen', price: 599, tests: ['TFT'] },
@@ -201,6 +207,23 @@
   const S = {};
   let seeding = false;
 
+  // WhatsApp and cloud-database settings. The demo never sends a message or connects to a
+  // server; these values are stored so the screens behave as the desktop app's do.
+  const whatsappDefaults = () => ({
+    enabled: false, phoneNumberId: '', apiVersion: 'v21.0', countryCode: '91', language: 'en',
+    templateReport: 'patholab_report_ready', templatePayment: 'patholab_payment_reminder',
+    templateDocument: 'patholab_report_document', sendReportPdf: false,
+  });
+  const syncDefaults = () => ({
+    engine: 'postgresql', host: '', port: 5432, database: 'patholab', user: '', tls: true,
+    lastSync: '', lastResult: '',
+  });
+  function ensureDefaults() {
+    S.whatsapp = { ...whatsappDefaults(), ...(S.whatsapp || {}) };
+    S.sync = { ...syncDefaults(), ...(S.sync || {}) };
+    S.messages = S.messages || [];
+  }
+
   function skeleton() {
     return {
       seq: { mrn: 0, order: 0, sample: 0, receipt: 0 },
@@ -210,7 +233,8 @@
       app: { backupOnExit: true, backupKeep: 10, backupEnabled: true, backupTime: '23:30' },
       users: [], patients: [], doctors: [], centres: [], branches: [], priceLists: [], tests: [], packages: [],
       orders: [], samples: [], inventory: [], qc: [], outsource: [], equipment: [], expenses: [], payouts: [],
-      audit: [], reports: [],
+      audit: [], reports: [], messages: [],
+      whatsapp: whatsappDefaults(), sync: syncDefaults(),
     };
   }
   function replaceState(obj) {
@@ -223,7 +247,7 @@
   function load() {
     try {
       const raw = localStorage.getItem(KEY);
-      if (raw) { replaceState(JSON.parse(raw)); return; }
+      if (raw) { replaceState(JSON.parse(raw)); ensureDefaults(); return; }
     } catch (e) { /* fall through to a fresh seed */ }
     seed();
   }
@@ -503,6 +527,118 @@
   }
 
   // ---- services (writes) ----------------------------------------------------
+  // ---- previous results, digital signature, WhatsApp (demo) ---------------------
+  // Most recent verified value of the same test for the same patient, on an earlier order.
+  function previousVerified(o, code) {
+    const def = testByCode(code);
+    const earlier = S.orders
+      .filter((x) => x.patientId === o.patientId && x.id !== o.id)
+      .sort((a, b) => b.id - a.id);
+    for (const x of earlier) {
+      const r = x.results[code];
+      if (r && r.status === 'VERIFIED') {
+        return { value: def.kind === 'quant' ? Number(r.value) : null, text: r.value, at: r.verifiedAt || r.at };
+      }
+    }
+    return null;
+  }
+  // Digest of the order's results as they stand. Changing any verified result changes it.
+  function contentDigest(o) {
+    const text = JSON.stringify({
+      order: o.orderNo,
+      results: o.tests.map((c) => {
+        const r = o.results[c] || {};
+        return [c, r.value || '', r.flag || '', r.status || '', r.verifiedBy || '', r.verifiedAt || ''];
+      }),
+    });
+    let h1 = 0x811c9dc5, h2 = 0x9e3779b9;
+    for (let i = 0; i < text.length; i++) {
+      const c = text.charCodeAt(i);
+      h1 = Math.imul(h1 ^ c, 16777619) >>> 0;
+      h2 = Math.imul(h2 ^ c, 2246822519) >>> 0;
+    }
+    return (h1.toString(16).padStart(8, '0') + h2.toString(16).padStart(8, '0')).toUpperCase();
+  }
+  const signatureCode = (o) => { const d = contentDigest(o); return `${d.slice(0, 4)}-${d.slice(4, 8)}-${d.slice(8, 12)}`; };
+
+  // Same rules as the desktop app: international digits only, 10-digit numbers get the country code.
+  function normalisePhone(raw, countryCode) {
+    let digits = String(raw || '').replace(/\D/g, '');
+    if (digits.startsWith('00')) digits = digits.slice(2);
+    if (digits.length === 10 && countryCode) digits = countryCode + digits;
+    return digits.length >= 8 && digits.length <= 15 ? digits : null;
+  }
+  const maskNumber = (n) => (n ? '*'.repeat(Math.max(0, n.length - 4)) + n.slice(-4) : '');
+
+  // Simulated send: the demo only records what the desktop app would have sent.
+  function waSend(o, template, params, once, detail = 'Simulated in the demo') {
+    const w = S.whatsapp;
+    const p = patientById(o.patientId);
+    if (!w.enabled) return { status: 'SKIPPED', detail: 'WhatsApp messaging is switched off.' };
+    if (!p.whatsappConsent) return { status: 'SKIPPED', detail: 'The patient has not agreed to WhatsApp messages.' };
+    const to = normalisePhone(p.phone, w.countryCode);
+    if (!to) return { status: 'SKIPPED', detail: 'The patient has no valid phone number.' };
+    if (once && S.messages.some((m) => m.orderId === o.id && m.template === template && m.status === 'SENT')) {
+      return { status: 'SKIPPED', detail: 'This message was already sent for this order.' };
+    }
+    const providerId = 'SIM-' + pad(S.messages.length + 1, 5);
+    S.messages.push({ id: S.messages.length + 1, at: nowIso(), orderId: o.id, orderNo: o.orderNo, template,
+      to: maskNumber(to), params, status: 'SENT', detail, providerId, by: actor() });
+    persist('whatsapp.send', `${o.orderNo} ${template}`);
+    return { status: 'SENT', detail: 'Sent (simulated).', providerId };
+  }
+
+  // ---- analyser file parsers (CSV, ASTM E1394, HL7 v2 ORU) ----------------------------
+  // Each parser returns { rows: [{ where, sampleNo, code, value }], errors: [message] }.
+  // Sample numbers come from the order record (ASTM O-2, HL7 OBR-3); codes from the
+  // result record (ASTM R-2, HL7 OBX-3). Only the fields the lab needs are read.
+  const splitRecords = (text) => String(text || '').split(/\r\n|\r|\n/).map((l) => l.trim()).filter(Boolean);
+  function parseCsv(text) {
+    const rows = []; const errors = [];
+    splitRecords(text).forEach((line, idx) => {
+      const where = `Line ${idx + 1}`;
+      const cols = line.split(',').map((c) => c.trim());
+      if (idx === 0 && /sample/i.test(cols[0]) && /value/i.test(line)) return;
+      if (cols.length < 3) { errors.push(`${where}: expected sample, test code, value`); return; }
+      rows.push({ where, sampleNo: cols[0], code: cols[1], value: cols[2] });
+    });
+    return { rows, errors };
+  }
+  function parseAstm(text) {
+    const rows = []; const errors = [];
+    let sampleNo = null;
+    splitRecords(text).forEach((line, idx) => {
+      const where = `Line ${idx + 1}`;
+      const f = line.split('|');
+      if (f[0] === 'O') sampleNo = (f[2] || '').trim();
+      if (f[0] === 'R') {
+        if (!sampleNo) { errors.push(`${where}: result before any order (O) record`); return; }
+        const parts = (f[2] || '').split('^');
+        rows.push({ where, sampleNo, code: (parts[3] || parts[0] || '').trim(), value: (f[3] || '').trim() });
+      }
+    });
+    return { rows, errors };
+  }
+  function parseHl7(text) {
+    const rows = []; const errors = [];
+    let sampleNo = null;
+    splitRecords(text).forEach((line, idx) => {
+      const where = `Line ${idx + 1}`;
+      const f = line.split('|');
+      if (f[0] === 'OBR') sampleNo = (f[3] || '').split('^')[0].trim();
+      if (f[0] === 'OBX') {
+        if (!sampleNo) { errors.push(`${where}: observation before any OBR segment`); return; }
+        rows.push({ where, sampleNo, code: (f[3] || '').split('^')[0].trim(), value: (f[5] || '').split('^')[0].trim() });
+      }
+    });
+    return { rows, errors };
+  }
+  function parseAnalyser(text, format) {
+    const parsed = format === 'ASTM' ? parseAstm(text) : format === 'HL7' ? parseHl7(text) : parseCsv(text);
+    if (!parsed.rows.length && !parsed.errors.length) parsed.errors.push('No results found. Check that the format matches the file.');
+    return parsed;
+  }
+
   const svc = {
     // patients
     savePatient(d, id) {
@@ -521,6 +657,11 @@
         phone: d.phone || '', email: d.email || '', bloodGroup: d.bloodGroup || '',
         address: d.address || '', notes: d.notes || '',
       };
+      // Consent is recorded with the time it was given; the time moves only when the choice changes.
+      const consent = d.whatsappConsent === '1' || d.whatsappConsent === true;
+      const wasConsenting = !!(p && p.whatsappConsent);
+      rec.whatsappConsent = consent;
+      rec.whatsappConsentAt = consent ? (wasConsenting && p.whatsappConsentAt ? p.whatsappConsentAt : nowIso()) : '';
       if (p) {
         Object.assign(p, rec);
         persist('patient.update', p.mrn);
@@ -648,7 +789,7 @@
       const patient = patientById(o.patientId);
       const criticals = [];
       let saved = 0;
-      entries.forEach(({ code, value }) => {
+      entries.forEach(({ code, value, comment }) => {
         if (!o.tests.includes(code)) return;
         const def = testByCode(code);
         const cur = o.results[code];
@@ -663,7 +804,17 @@
           if (!def.choices.includes(raw)) fail(`${def.name}: choose one of the listed values.`);
         }
         const flag = computeFlag(def, raw, patient);
-        o.results[code] = { value: raw, flag, status: 'ENTERED', by: actor(), at: nowIso(), verifiedBy: '', verifiedAt: '', notified: null };
+        // Delta check against the previous verified value of this test for this patient.
+        const prev = previousVerified(o, code);
+        const numeric = def.kind === 'quant' && isFinite(Number(raw));
+        const pct = numeric && prev && prev.value ? round1((Number(raw) - prev.value) / Math.abs(prev.value) * 100) : null;
+        o.results[code] = {
+          value: raw, flag, status: 'ENTERED', by: actor(), at: nowIso(), verifiedBy: '', verifiedAt: '', notified: null,
+          comment: comment != null ? String(comment).trim() : ((cur && cur.comment) || ''),
+          prev: prev ? { text: prev.text, value: prev.value, at: prev.at } : null,
+          delta: pct,
+          deltaFlag: pct != null && def.delta != null && Math.abs(pct) > def.delta,
+        };
         saved++;
         if (isCritical(flag)) criticals.push(def.name);
       });
@@ -679,6 +830,15 @@
       if (o.status === 'CANCELLED') fail('Cancelled orders cannot be verified.');
       const missing = pendingCount(o);
       if (missing) fail(`${missing} result(s) still need to be entered before verification.`);
+      const blocked = o.tests.filter((c) => {
+        const r = o.results[c];
+        return r && r.status === 'ENTERED' && r.deltaFlag && !(r.comment || '').trim();
+      });
+      if (blocked.length) {
+        const err = new DomainError(`Delta check failed for ${blocked.map((c) => testByCode(c).name).join(', ')}. Add a comment explaining the change, then verify.`);
+        err.deltaCodes = blocked;
+        throw err;
+      }
       let count = 0;
       o.tests.forEach((c) => {
         const r = o.results[c];
@@ -720,6 +880,10 @@
         type, by: actor(), at: nowIso(),
         file: `${o.orderNo}_${type.toLowerCase()}_${S.reports.length + 1}.pdf`,
       };
+      if (!provisional) {
+        rec.signature = signatureCode(o);
+        rec.whatsapp = waSend(o, S.whatsapp.templateReport, [patientName(patientById(o.patientId)), o.orderNo, S.lab.name], true);
+      }
       S.reports.push(rec);
       persist('report.generate', `${o.orderNo} (${type})`);
       save();
@@ -953,28 +1117,124 @@
     },
 
     // analysers
-    importCsv(text) {
-      const lines = String(text || '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    previewAnalyser(text, format) {
+      const { rows, errors } = parseAnalyser(text, format);
+      const out = errors.map((msg) => ({ sampleNo: '-', code: '-', value: '-', status: msg }));
+      rows.forEach((r) => {
+        const s = S.samples.find((x) => x.sampleNo === r.sampleNo);
+        let status = 'OK';
+        if (!s) status = `${r.where}: unknown sample ${r.sampleNo}`;
+        else if (!s.tests.includes(r.code)) status = `${r.where}: ${r.code} is not requested on ${r.sampleNo}`;
+        else if (r.value === '') status = `${r.where}: no value`;
+        out.push({ sampleNo: r.sampleNo, code: r.code, value: r.value, status });
+      });
+      return out;
+    },
+    importAnalyser(text, format) {
+      const preview = svc.previewAnalyser(text, format);
       const byOrder = {};
       const skipped = [];
       let applied = 0;
-      lines.forEach((line, idx) => {
-        const cols = line.split(',').map((c) => c.trim());
-        if (idx === 0 && /sample/i.test(cols[0]) && /value/i.test(line)) return;
-        if (cols.length < 3) { skipped.push(`Line ${idx + 1}: expected sample, test code, value`); return; }
-        const [sampleNo, code, value] = cols;
-        const sample = S.samples.find((s) => s.sampleNo === sampleNo);
-        if (!sample) { skipped.push(`Line ${idx + 1}: unknown sample ${sampleNo}`); return; }
-        if (!sample.tests.includes(code)) { skipped.push(`Line ${idx + 1}: ${code} is not requested on ${sampleNo}`); return; }
-        (byOrder[sample.orderId] = byOrder[sample.orderId] || []).push({ code, value });
-        applied++;
+      preview.forEach((r) => {
+        if (r.status !== 'OK') { skipped.push(r.status); return; }
+        const sample = S.samples.find((s) => s.sampleNo === r.sampleNo);
+        (byOrder[sample.orderId] = byOrder[sample.orderId] || []).push({ code: r.code, value: r.value });
       });
       Object.keys(byOrder).forEach((oid) => {
-        try { svc.saveResults(Number(oid), byOrder[oid]); } catch (e) { skipped.push(e.message); }
+        try { svc.saveResults(Number(oid), byOrder[oid]); applied += byOrder[oid].length; } catch (e) { skipped.push(e.message); }
       });
-      persist('analyser.import', `${applied} value(s)`);
+      persist('analyser.import', `${format || 'CSV'}: ${applied} value(s)`);
       save();
       return { applied, skipped };
+    },
+
+    // WhatsApp messaging (simulated in the demo)
+    saveWhatsapp(d) {
+      const enabled = !!d.enabled;
+      const phoneNumberId = String(d.phoneNumberId || '').trim();
+      if (enabled && !/^\d{6,20}$/.test(phoneNumberId)) fail('Enter the phone number ID from Meta (digits only).');
+      if (!/^\d{1,3}$/.test(String(d.countryCode || '').trim())) fail('The default country code is 1 to 3 digits, without the +.');
+      if (!String(d.templateReport || '').trim() || !String(d.templatePayment || '').trim()) fail('Enter both template names.');
+      S.whatsapp = {
+        ...S.whatsapp, enabled, phoneNumberId,
+        apiVersion: String(d.apiVersion || 'v21.0').trim(), countryCode: String(d.countryCode).trim(),
+        language: String(d.language || 'en').trim(), templateReport: String(d.templateReport).trim(),
+        templatePayment: String(d.templatePayment).trim(),
+        templateDocument: String(d.templateDocument || 'patholab_report_document').trim(),
+        sendReportPdf: !!d.sendReportPdf,
+      };
+      persist('whatsapp.settings', enabled ? 'enabled' : 'disabled');
+      save();
+    },
+    testWhatsapp(phone) {
+      const to = normalisePhone(phone, S.whatsapp.countryCode);
+      if (!to) fail('That is not a valid phone number.');
+      if (!S.whatsapp.enabled) fail('Switch WhatsApp messaging on first.');
+      const providerId = 'SIM-' + pad(S.messages.length + 1, 5);
+      S.messages.push({ id: S.messages.length + 1, at: nowIso(), orderId: null, orderNo: '-', template: S.whatsapp.templateReport,
+        to: maskNumber(to), params: ['Test', 'TEST-000', 'Demo lab'], status: 'SENT', detail: 'Simulated test message', providerId, by: actor() });
+      persist('whatsapp.test', maskNumber(to));
+      save();
+      return providerId;
+    },
+    sendPaymentReminder(orderId) {
+      const o = orderById(orderId);
+      const t = orderTotals(o);
+      if (t.balance <= 0.005) return { status: 'SKIPPED', detail: 'Nothing is owed on this order.' };
+      const res = waSend(o, S.whatsapp.templatePayment,
+        [patientName(patientById(o.patientId)), o.orderNo, t.balance.toFixed(2), S.lab.name], false);
+      save();
+      return res;
+    },
+
+    // Final report PDF sent to the patient. Off unless the lab allows it, because the PDF has results.
+    sendReportWhatsapp(reportId) {
+      const rec = S.reports.find((r) => r.id === Number(reportId));
+      if (!rec) fail('That report no longer exists.');
+      if (rec.type !== 'Final') fail('Only final reports can be sent on WhatsApp.');
+      if (!S.whatsapp.sendReportPdf) {
+        return { status: 'SKIPPED', detail: 'Sending report PDFs on WhatsApp is switched off in settings.' };
+      }
+      const o = orderById(rec.orderId);
+      const res = waSend(o, S.whatsapp.templateDocument,
+        [patientName(patientById(o.patientId)), o.orderNo, S.lab.name], false, 'Report PDF (simulated in the demo)');
+      save();
+      return res;
+    },
+
+    // cloud database and sync (simulated in the demo)
+    saveSync(d) {
+      const port = Number(d.port);
+      if (!String(d.host || '').trim()) fail('Enter the server name or address.');
+      if (!(port > 0 && port < 65536)) fail('Enter a port between 1 and 65535.');
+      if (!String(d.database || '').trim()) fail('Enter the database name.');
+      if (!String(d.user || '').trim()) fail('Enter the database user name.');
+      S.sync = { ...S.sync, engine: d.engine === 'mysql' ? 'mysql' : 'postgresql', host: String(d.host).trim(), port,
+        database: String(d.database).trim(), user: String(d.user).trim(), tls: !!d.tls };
+      persist('sync.settings', `${S.sync.engine} ${S.sync.host}`);
+      save();
+    },
+    testSync() {
+      if (!S.sync.host) fail('Save the server settings first.');
+      return `Demo: the ${S.sync.engine === 'mysql' ? 'MySQL' : 'PostgreSQL'} settings look valid. The desktop app makes the real connection.`;
+    },
+    syncNow() {
+      if (!S.sync.host) fail('Save the server settings first.');
+      S.sync.lastSync = nowIso();
+      S.sync.lastResult = 'Demo: nothing is sent. The desktop app pushes its changes and pulls the other branches’ changes.';
+      persist('sync.run', S.sync.host);
+      save();
+      return S.sync.lastResult;
+    },
+
+    // report signature check (recomputes the digest from the results as they stand)
+    verifySignature(reportId) {
+      const rec = S.reports.find((r) => r.id === Number(reportId));
+      if (!rec) fail('That report no longer exists.');
+      if (!rec.signature) return { valid: false, detail: 'Provisional reports are not signed.' };
+      const o = orderById(rec.orderId);
+      if (signatureCode(o) === rec.signature) return { valid: true, detail: `Signature ${rec.signature} matches the results as they stand.` };
+      return { valid: false, detail: 'The results have changed since this report was signed.' };
     },
 
     // finance
@@ -1065,6 +1325,7 @@
       const need = ['users', 'patients', 'orders', 'tests', 'samples'];
       if (!need.every((k) => Array.isArray(obj[k]))) fail('That file is not a PathoLab demo backup.');
       replaceState({ ...skeleton(), ...obj });
+      ensureDefaults();
       sessionUserId = null;
       persist('data.import', 'Backup restored');
       save();

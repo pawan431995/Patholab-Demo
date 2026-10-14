@@ -270,14 +270,18 @@
             ? `<span class="flag ${isCritical(r.flag) ? 'flag-crit' : ''}">${esc(FLAG_SYMBOL[r.flag] || '')}</span>` : '';
           const status = r ? badge(label(r.status), r.status === 'VERIFIED' ? 'OK' : r.status === 'ENTERED' ? 'Partial' : 'muted') : badge('Pending', 'PENDING');
           const notify = r && isCritical(r.flag) && !r.notified ? `<div class="crit-note">Notify doctor</div>` : '';
+          const delta = r && r.deltaFlag && r.status !== 'VERIFIED' ? `<div class="crit-note">Delta check</div>` : '';
+          const prev = r && r.prev
+            ? `${esc(r.prev.text)}<div class="muted small">${esc(fdate(r.prev.at))}${r.delta != null ? ` &middot; ${r.delta > 0 ? '+' : ''}${r.delta}%` : ''}</div>`
+            : '<span class="muted">-</span>';
           return `<tr><td><b>${esc(def.name)}</b><div class="muted small">${esc(def.dept)}</div></td>` +
             `<td class="res-input">${input}</td><td>${esc(def.unit || '')}</td>` +
-            `<td>${esc(rangeText(def, p))}</td><td class="al-center">${flag}${notify}</td><td>${status}</td></tr>`;
+            `<td>${esc(rangeText(def, p))}</td><td>${prev}</td><td class="al-center">${flag}${notify}${delta}</td><td>${status}</td></tr>`;
         }).join('');
         const verified = o.tests.every((c) => o.results[c] && o.results[c].status === 'VERIFIED');
         right = card(`Results - ${o.orderNo}`, banner +
           `<div class="grid-wrap"><table class="grid results-grid"><thead><tr>` +
-          `<th>Investigation</th><th>Result</th><th>Unit</th><th>Reference interval</th><th class="al-center">Flag</th><th>Status</th>` +
+          `<th>Investigation</th><th>Result</th><th>Unit</th><th>Reference interval</th><th>Previous</th><th class="al-center">Flag</th><th>Status</th>` +
           `</tr></thead><tbody>${rowsHtml}</tbody></table></div>` +
           `<p class="muted small">${verified ? 'All results verified. A final report can be generated.' : 'Enter values and press Save Results. Verify all results before a final report.'}` +
           ` Flags: L low, H high, LL / HH critical, * abnormal.</p>`, { cls: 'grow-card' });
@@ -303,7 +307,10 @@
       verifyAll() {
         const o = this.state.orderId ? orderById(this.state.orderId) : null;
         if (!o) return;
-        try { const n = svc.verifyResults(o.id); toast(`Verified ${n} result(s)`, 'ok'); PL.app.refresh(); } catch (e) { PL.app.handle(e, 'Could not verify'); }
+        try { const n = svc.verifyResults(o.id); toast(`Verified ${n} result(s)`, 'ok'); PL.app.refresh(); } catch (e) {
+          if (e.deltaCodes) { PL.dialogs.deltaComment(o, e.deltaCodes); return; }
+          PL.app.handle(e, 'Could not verify');
+        }
       },
       async generateReport() {
         const o = this.state.orderId ? orderById(this.state.orderId) : null;
@@ -510,13 +517,13 @@
       eqNew: () => PL.dialogs.equipment(null),
       eqEdit: () => { const e = S.equipment.find((x) => x.id === Number(sel('eq'))); if (e) PL.dialogs.equipment(e); },
       eqLog: () => { const e = S.equipment.find((x) => x.id === Number(sel('eq'))); if (e) PL.dialogs.equipmentLog(e); },
-      anPreview() { previewAnalyser(this.state.analyser); },
-      anLoad() { this.state.analyser = sampleCsv(); PL.app.refresh(); },
+      anPreview() { previewAnalyser(document.getElementById('an-text').value, analyserFormat()); },
+      anLoad() { this.state.analyser = sampleAnalyser(analyserFormat()); PL.app.refresh(); },
       anImport() {
         const text = document.getElementById('an-text').value;
         this.state.analyser = text;
         try {
-          const { applied, skipped } = svc.importCsv(text);
+          const { applied, skipped } = svc.importAnalyser(text, analyserFormat());
           const msg = `${applied} value(s) applied.` + (skipped.length ? `\n\nSkipped:\n${skipped.slice(0, 8).join('\n')}` : '');
           alertBox('Import complete', msg, applied ? 'ok' : 'warn');
           PL.app.refresh();
@@ -618,14 +625,33 @@
         table({ id: 'eqh', empty: 'Select equipment to see its history.',
           cols: [{ h: 'Date' }, { h: 'Event' }, { h: 'Note' }, { h: 'By' }], rows: hist })) + `</div>`);
   }
-  function sampleCsv() {
+  const analyserFormat = () => (document.getElementById('an-format') || {}).value || 'CSV';
+  // An example file in the chosen format, built from samples that are awaiting results.
+  function sampleAnalyser(format) {
     const open = S.samples.filter((s) => s.status === 'RECEIVED' || s.status === 'PROCESSING' || s.status === 'COLLECTED').slice(0, 2);
-    const lines = [SAMPLE_CSV];
+    const rows = [];
     open.forEach((s) => s.tests.slice(0, 2).forEach((c) => {
       const def = testByCode(c);
-      lines.push(`${s.sampleNo},${c},${def.kind === 'quant' ? (computeSample(def)) : (def.normal || def.choices[0])}`);
+      rows.push({ sampleNo: s.sampleNo, code: c, value: def.kind === 'quant' ? computeSample(def) : (def.normal || def.choices[0]) });
     }));
-    return lines.join('\n');
+    const samples = [...new Set(rows.map((r) => r.sampleNo))];
+    if (format === 'ASTM') {
+      const lines = ['H|\\^&|||PathoLab demo analyser', 'P|1'];
+      samples.forEach((no, i) => {
+        lines.push(`O|${i + 1}|${no}||^^^ALL`);
+        rows.filter((r) => r.sampleNo === no).forEach((r, j) => lines.push(`R|${j + 1}|^^^${r.code}|${r.value}`));
+      });
+      return lines.concat(['L|1|N']).join('\r');
+    }
+    if (format === 'HL7') {
+      const lines = ['MSH|^~\\&|ANALYSER|DEMO|PATHOLAB|LAB|20260101000000||ORU^R01|1|P|2.5'];
+      samples.forEach((no, i) => {
+        lines.push(`OBR|${i + 1}||${no}|^^^ALL`);
+        rows.filter((r) => r.sampleNo === no).forEach((r, j) => lines.push(`OBX|${j + 1}|NM|${r.code}^${testByCode(r.code).name}||${r.value}|||||F`));
+      });
+      return lines.join('\r');
+    }
+    return [SAMPLE_CSV].concat(rows.map((r) => `${r.sampleNo},${r.code},${r.value}`)).join('\n');
   }
   function computeSample(def) {
     const r = def.ranges[0];
@@ -634,28 +660,25 @@
   }
   function anTab() {
     const text = labOps.state.analyser || '';
-    return card('Analyser import (CSV)',
+    return card('Analyser import',
       `<div class="split-2"><div class="stack">` +
-      `<label class="field"><span>Format</span><select><option>CSV (sample, analyser code, value)</option>` +
-      `<option disabled>ASTM E1394 - available in the desktop app</option><option disabled>HL7 v2 ORU - available in the desktop app</option></select></label>` +
+      `<label class="field"><span>Format</span><select id="an-format">` +
+      `<option value="CSV">CSV (sample, test code, value)</option>` +
+      `<option value="ASTM">ASTM E1394 (O and R records)</option>` +
+      `<option value="HL7">HL7 v2 ORU (OBR and OBX segments)</option></select></label>` +
       `<label class="field"><span>File contents</span><textarea id="an-text" data-input="anText" rows="10" placeholder="sample,code,value">${esc(text)}</textarea></label>` +
       `<div class="toolbar-row"><button data-act="anLoad">Load example</button><button data-act="anPreview">Preview</button>` +
       `<button class="primary" data-act="anImport">Import results</button></div></div>` +
-      `<div class="muted small"><p>Each line names a sample number, the test code requested on that sample, and the measured value. ` +
-      `Values are validated and flagged exactly as if typed into Result Entry.</p><p>The web demo accepts CSV only. Load the example to see the format.</p></div></div>`);
+      `<div class="muted small"><p>Each result names a sample number, the test code requested on that sample, and the measured value. ` +
+      `Values are validated and flagged exactly as if typed into Result Entry.</p>` +
+      `<p>The web demo reads all three formats in the browser. The desktop app also reads them from a serial or network connection to the analyser, which the demo cannot do.</p>` +
+      `<p>Load the example, then pick the format it matches.</p></div></div>`);
   }
-  function previewAnalyser(text) {
-    const rows = String(text || '').split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !/^sample/i.test(l)).map((line, i) => {
-      const [sampleNo, code, value] = line.split(',').map((c) => (c || '').trim());
-      const s = S.samples.find((x) => x.sampleNo === sampleNo);
-      let status = 'OK';
-      if (!s) status = 'Unknown sample';
-      else if (!s.tests.includes(code)) status = `${code} not requested on ${sampleNo}`;
-      else if (!value) status = 'No value';
-      return { id: i, cells: [esc(sampleNo), esc(code), esc(value), status === 'OK' ? badge('OK', 'OK') : badge(status, 'bad')] };
-    });
-    modal({ title: 'Import preview', width: 620,
-      body: table({ id: 'anp', cols: [{ h: 'Sample' }, { h: 'Code' }, { h: 'Value' }, { h: 'Check' }], rows, empty: 'No data lines.' }),
+  function previewAnalyser(text, format) {
+    const rows = svc.previewAnalyser(text, format).map((r, i) => ({ id: i, cells: [
+      esc(r.sampleNo), esc(r.code), esc(r.value), r.status === 'OK' ? badge('OK', 'OK') : badge(r.status, 'bad')] }));
+    modal({ title: `Import preview (${format})`, width: 620,
+      body: table({ id: 'anp', cols: [{ h: 'Sample' }, { h: 'Code' }, { h: 'Value' }, { h: 'Check' }], rows, empty: 'No results found in this text.' }),
       buttons: [{ label: 'Close', primary: true }] });
   }
 
@@ -710,6 +733,7 @@
     sub: 'Previously generated laboratory reports',
     detailTables: ['reports'],
     toolbar: () => btn('Open PDF', 'repOpen', { primary: true, req: 'reports' }) + btn('Regenerate', 'repRegen', { req: 'reports' }) +
+      btn('Verify Signature', 'repVerify', { req: 'reports' }) + btn('Send on WhatsApp', 'repWhatsapp', { req: 'reports' }) +
       btn('Send Email', 'repEmail', { req: 'reports' }) + btn('Open Folder', 'repFolder') + btn('Refresh', 'refresh'),
     body() {
       const list = S.reports.slice().reverse();
@@ -727,6 +751,30 @@
         const r = currentReport();
         if (!r) return;
         try { svc.generateReport(r.orderId, r.type === 'Provisional'); toast('Report regenerated', 'ok'); PL.app.refresh(); } catch (e) { PL.app.handle(e, 'Could not regenerate the report'); }
+      },
+      async repWhatsapp() {
+        const r = currentReport();
+        if (!r) return;
+        if (r.type !== 'Final') { alertBox('Send on WhatsApp', 'Only final reports can be sent on WhatsApp.', 'warn'); return; }
+        if (!PL.store.S.whatsapp.sendReportPdf) {
+          alertBox('Send on WhatsApp', 'Sending report PDFs on WhatsApp is switched off. Turn it on under Tools > WhatsApp Messaging.', 'warn');
+          return;
+        }
+        if (!await confirmBox('Send on WhatsApp', `Send the report for ${r.orderNo} to the patient on WhatsApp? The report contains test results. Check the number before sending.`, { ok: 'Send' })) return;
+        try {
+          const res = svc.sendReportWhatsapp(r.id);
+          if (res.status === 'SENT') toast(`Report sent on WhatsApp for ${r.orderNo} (simulated)`, 'ok');
+          else alertBox('Report not sent', res.detail, 'warn');
+          PL.app.refresh();
+        } catch (e) { PL.app.handle(e, 'Report not sent'); }
+      },
+      repVerify() {
+        const r = currentReport();
+        if (!r) return;
+        try {
+          const res = svc.verifySignature(r.id);
+          alertBox('Verify signature', res.detail, res.valid ? 'ok' : 'bad');
+        } catch (e) { PL.app.handle(e, 'Could not verify the signature'); }
       },
       repEmail() {
         const r = currentReport();
@@ -791,6 +839,16 @@
         if (o) PL.dialogs.receivePayment(o.id);
       },
       finInvoice() { const o = orderById(Number(sel('dues'))); if (o) printHtml(PL.dialogs.invoiceHtml(o)); },
+      finReminder() {
+        const o = orderById(Number(sel('dues')));
+        if (!o) return;
+        try {
+          const res = svc.sendPaymentReminder(o.id);
+          if (res.status === 'SENT') toast(`WhatsApp reminder sent for ${o.orderNo}`, 'ok');
+          else alertBox('WhatsApp reminder not sent', res.detail, 'warn');
+          PL.app.refresh();
+        } catch (e) { PL.app.handle(e, 'Reminder not sent'); }
+      },
       finReceipt() {
         const o = orderById(Number(sel('dues')));
         if (!o) return;
@@ -817,7 +875,7 @@
     sync() {
       const set = (act, ok) => { const b = document.querySelector(`[data-act="${act}"]`); if (b) b.disabled = !ok; };
       const hasDue = !!sel('dues');
-      ['finReceive', 'finInvoice', 'finReceipt'].forEach((a) => set(a, hasDue));
+      ['finReceive', 'finInvoice', 'finReceipt', 'finReminder'].forEach((a) => set(a, hasDue));
       set('finRuleRemove', !!sel('rules'));
       set('finPayout', !!sel('rules'));
       set('finExpenseDelete', !!sel('exp'));
@@ -836,7 +894,8 @@
     const payRows = payments.map((p) => ({ id: p.id, cells: [esc(p.receipt), esc(fdt(p.at)), esc(p.order.orderNo), `<span class="num">${money(p.amount)}</span>`, esc(label(p.method)), esc(p.ref || '-')] }));
     return card('Outstanding dues', `<div class="toolbar-row">` +
       (hp('billing.collect') ? btn('Receive Payment...', 'finReceive', { primary: true, req: 'dues' }) : '') +
-      `${btn('Print Invoice', 'finInvoice', { req: 'dues' })}${btn('Print Receipt', 'finReceipt', { req: 'dues' })}</div>` +
+      `${btn('Print Invoice', 'finInvoice', { req: 'dues' })}${btn('Print Receipt', 'finReceipt', { req: 'dues' })}` +
+      `${hp('billing.collect') ? btn('Send WhatsApp Reminder', 'finReminder', { req: 'dues' }) : ''}</div>` +
       table({ id: 'dues', selected: sel('dues'), empty: 'No outstanding dues in this period.',
         cols: [{ h: 'Order' }, { h: 'Patient' }, { h: 'Net', align: 'right' }, { h: 'Paid', align: 'right' }, { h: 'Balance', align: 'right' }, { h: 'Payment' }], rows: duesRows })) +
       card('Payments received', table({ id: 'pays', empty: 'No payments in this period.',

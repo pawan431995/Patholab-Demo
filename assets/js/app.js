@@ -101,6 +101,8 @@
       { text: 'Health Packages...', perms: ['packages.manage'], run: () => dialogs.packages() },
       { text: 'Masters...', perms: ['masters.manage'], run: () => dialogs.masters() },
       { text: 'Data & Backup...', perms: ['data.transfer', 'backup.manage'], run: () => dialogs.dataTools() },
+      { text: 'Cloud Database & Sync...', perms: ['settings.manage'], run: () => dialogs.cloudSync() },
+      { text: 'WhatsApp Messaging...', perms: ['settings.manage'], run: () => dialogs.whatsapp() },
       { text: 'Manage Users...', perms: ['users.manage'], run: () => dialogs.users() },
       { text: 'Roles & Permissions...', perms: ['users.manage'], run: () => dialogs.roles() },
       '-',
