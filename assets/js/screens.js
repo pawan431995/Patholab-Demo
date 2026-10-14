@@ -430,6 +430,7 @@
         const o = S.orders.find((x) => x.id === s.orderId);
         const p = o ? patientById(o.patientId) : null;
         printHtml(`<div class="label-sheet"><div class="label-title">${esc(s.sampleNo)}</div>` +
+          PL.ui.code128Svg(s.sampleNo, { module: 1.6, height: 40 }) +
           `<div>${esc(patientName(p))} &middot; ${esc(p ? p.mrn : '')}</div>` +
           `<div>${esc(o ? o.orderNo : '')} &middot; ${esc(s.specimen)}</div>` +
           `<div>Tests: ${esc(s.tests.join(', '))}</div>` +

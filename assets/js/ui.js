@@ -245,9 +245,50 @@
     return el && el.dataset.sel ? el.dataset.sel : null;
   };
 
+  // ---- Code 128 (subset B) barcodes, drawn as SVG -------------------------------
+  // Bar widths per symbol value 0-106 (module counts, bar first). Taken from the
+  // reference table the desktop label printer uses (reportlab's Code 128).
+  const C128 = ["212222","222122","222221","121223","121322","131222","122213","122312","132212","221213",
+    "221312","231212","112232","122132","122231","113222","123122","123221","223211","221132","221231","213212",
+    "223112","312131","311222","321122","321221","312212","322112","322211","212123","212321","232121","111323",
+    "131123","131321","112313","132113","132311","211313","231113","231311","112133","112331","132131","113123",
+    "113321","133121","313121","211331","231131","213113","213311","213131","311123","311321","331121","312113",
+    "312311","332111","314111","221411","431111","111224","111422","121124","121421","141122","141221","112214",
+    "112412","122114","122411","142112","142211","241211","221114","413111","241112","134111","111242","121142",
+    "121241","114212","124112","124211","411212","421112","421211","212141","214121","412121","111143","111341",
+    "131141","114113","114311","411113","411311","113141","114131","311141","411131","211412","211214","211232"];
+  const C128_STOP = '2331112';
+  const START_B = 104;
+
+  function code128Svg(text, { module = 2, height = 54 } = {}) {
+    const value = String(text == null ? '' : text).replace(/[^\x20-\x7e]/g, '');
+    const symbols = [START_B];
+    for (const ch of value) symbols.push(ch.charCodeAt(0) - 32);
+    let check = symbols[0];
+    for (let i = 1; i < symbols.length; i++) check += symbols[i] * i;
+    symbols.push(check % 103);
+    const pieces = symbols.map((v) => C128[v]).concat([C128_STOP]);
+    const bars = [];
+    let x = 10; // quiet zone of 10 modules on the left
+    let dark = true;
+    for (const piece of pieces) {
+      for (const d of piece) {
+        const w = Number(d);
+        if (dark) bars.push(`<rect x="${x * module}" y="0" width="${w * module}" height="${height}"/>`);
+        x += w;
+        dark = !dark;
+      }
+    }
+    const width = (x + 10) * module;
+    return `<svg class="barcode" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height + 16}" ` +
+      `width="${width}" height="${height + 16}" role="img" aria-label="Barcode ${esc(value)}">` +
+      `<g fill="#000">${bars.join('')}</g>` +
+      `<text x="${width / 2}" y="${height + 13}" text-anchor="middle" font-family="Arial" font-size="13">${esc(value)}</text></svg>`;
+  }
+
   PL.ui = {
     esc, money, fdate, fdt, fdtShort, badge, colourOf, FLAG_SYMBOL, FLAG_TEXT,
     card, stat, field, empty, table, toast, modal, alertBox, confirmBox, form,
-    download, printHtml, keepFocus, sel,
+    download, printHtml, keepFocus, sel, code128Svg,
   };
 })(window.PL = window.PL || {});
