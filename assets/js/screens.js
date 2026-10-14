@@ -327,8 +327,9 @@
         if (!o) return;
         const entries = [...document.querySelectorAll('[data-res]')].map((el) => ({ code: el.dataset.res, value: el.value }));
         try {
-          const { saved, criticals } = svc.saveResults(o.id, entries);
+          const { saved, criticals, reflexes } = svc.saveResults(o.id, entries);
           toast(`Saved ${saved} result(s)`, 'ok');
+          reflexes.forEach((x) => toast(`Reflex: ${x.added.join(', ')} added to ${o.orderNo} (${x.from} = ${x.value})`, 'info'));
           if (criticals.length) PL.dialogs.criticalAlert(o, criticals);
           PL.app.refresh();
         } catch (e) { PL.app.handle(e, 'Results not saved'); }

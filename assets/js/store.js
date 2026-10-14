@@ -197,6 +197,14 @@
   const DELTA_LIMITS = { HB: 15, CREA: 25, WBC: 30, TSH: 40 };
   CATALOG.forEach((x) => { if (DELTA_LIMITS[x.code] != null) x.delta = DELTA_LIMITS[x.code]; });
 
+  // Reflex rules: when a saved result meets the rule, the listed tests are added to the same order.
+  //   ABOVE / BELOW a number, or FLAG (any abnormal or critical flag).
+  const REFLEX = {
+    FBS: { when: 'ABOVE', value: 125, add: ['HBA1C'] },
+    TSH: { when: 'FLAG', add: ['FT4'] },
+  };
+  CATALOG.forEach((x) => { if (REFLEX[x.code]) x.reflex = REFLEX[x.code]; });
+
   const PACKAGES = [
     { name: 'Basic Health Check', price: 999, tests: ['CBC', 'FBS', 'CREA', 'LFT', 'LIPID'] },
     { name: 'Thyroid Screen', price: 599, tests: ['TFT'] },
@@ -222,6 +230,12 @@
     S.whatsapp = { ...whatsappDefaults(), ...(S.whatsapp || {}) };
     S.sync = { ...syncDefaults(), ...(S.sync || {}) };
     S.messages = S.messages || [];
+    // Rules added after a browser's data was first saved: fill them in without touching anything else.
+    S.tests.forEach((t) => {
+      if (REFLEX[t.code] && !t.reflex) t.reflex = REFLEX[t.code];
+      if (DELTA_LIMITS[t.code] != null && t.delta == null) t.delta = DELTA_LIMITS[t.code];
+    });
+    S.users.forEach((u) => { if (u.failedLogins == null) { u.failedLogins = 0; u.lockedUntil = null; } });
   }
 
   function skeleton() {
@@ -542,6 +556,42 @@
   // ---- services (writes) ----------------------------------------------------
   // ---- previous results, digital signature, WhatsApp (demo) ---------------------
   // Most recent verified value of the same test for the same patient, on an earlier order.
+  function reflexFires(def, r) {
+    const rx = def.reflex;
+    const n = Number(r.value);
+    if (rx.when === 'ABOVE') return def.kind === 'quant' && n > rx.value;
+    if (rx.when === 'BELOW') return def.kind === 'quant' && n < rx.value;
+    if (rx.when === 'FLAG') return r.flag !== 'NORMAL' && r.flag !== 'NOT_APPLICABLE';
+    return false;
+  }
+
+  // Adds tests (panels expand) to an existing order: billed, given a sample, pending results.
+  function addTestsToOrder(o, codes, reason) {
+    const plist = S.priceLists.find((x) => x.id === o.priceListId) || defaultPriceList();
+    const added = [];
+    leaves(codes).forEach((c) => {
+      if (o.tests.includes(c)) return;
+      const def = testByCode(c);
+      const price = priceOf(def, plist);
+      o.tests.push(c);
+      o.lines.push({ kind: 'test', code: c, name: def.name, price, reflex: reason });
+      o.gross = round2(o.gross + price);
+      o.net = round2(o.net + price);
+      const sample = S.samples.find((x) => x.orderId === o.id && x.specimen === def.specimen);
+      if (sample) sample.tests.push(c);
+      else {
+        S.samples.push({
+          id: nextId('samples'), sampleNo: 'SMP' + pad(++S.seq.sample, 6), orderId: o.id, specimen: def.specimen,
+          container: CONTAINER[def.specimen] || 'Sterile container', tests: [c], status: 'PENDING',
+          location: '', collectedAt: null, receivedAt: null, rejectReason: '',
+          history: [{ at: nowIso(), event: `Created by ${reason}` }],
+        });
+      }
+      added.push(def.name);
+    });
+    return added;
+  }
+
   function previousVerified(o, code) {
     const def = testByCode(code);
     const earlier = S.orders
@@ -832,11 +882,21 @@
         if (isCritical(flag)) criticals.push(def.name);
       });
       if (!saved) fail('Enter at least one result before saving.');
+      // Reflex testing: a saved result that meets a rule adds its follow-up tests to this order.
+      const reflexes = [];
+      entries.forEach(({ code }) => {
+        const def = testByCode(code);
+        const r = o.results[code];
+        if (!def || !def.reflex || !r || r.status !== 'ENTERED' || !reflexFires(def, r)) return;
+        const added = addTestsToOrder(o, def.reflex.add, `reflex from ${def.name} = ${r.value}`);
+        if (added.length) reflexes.push({ from: def.name, value: r.value, added });
+      });
       if (o.status === 'REGISTERED') o.status = 'COLLECTED';
       if (o.status === 'COLLECTED') o.status = 'IN_PROGRESS';
+      reflexes.forEach((x) => persist('results.reflex', `${o.orderNo}: ${x.added.join(', ')} after ${x.from}`));
       persist('results.save', `${o.orderNo}: ${saved} value(s)`);
       save();
-      return { saved, criticals };
+      return { saved, criticals, reflexes };
     },
     verifyResults(orderId) {
       const o = orderById(orderId);
