@@ -108,6 +108,25 @@
         cells: [`<b>${esc(o.orderNo)}</b>`, esc(fdtShort(o.registeredAt)), badge(label(o.status), o.status),
           esc(PL.store.orderSummary(o)), `<span class="num">${esc(money(o.net).replace(/^₹/, '₹ '))}</span>`],
       })) : [];
+      let trendCard = '';
+      if (pid) {
+        const tests = q.trendTests(Number(pid));
+        const code = tests.some((t) => t.code === this.state.trend) ? this.state.trend : (tests[0] ? tests[0].code : null);
+        this.state.trend = code;
+        const picker = tests.length ? `<select data-change="trendTest">${tests.map((t) =>
+          `<option value="${esc(t.code)}" ${t.code === code ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select>` : '';
+        let chart = empty('No numeric results for this patient yet. The trend appears once results are saved.');
+        if (code) {
+          const tr = q.trend(Number(pid), code);
+          const latest = tr.points[tr.points.length - 1];
+          const prev = tr.points[tr.points.length - 2];
+          const change = latest && prev && prev.v !== 0 ? ` &middot; change ${(((latest.v - prev.v) / Math.abs(prev.v)) * 100).toFixed(1)}% from the previous result` : '';
+          chart = PL.ui.lineChartSvg({ points: tr.points, range: tr.range, unit: tr.unit }) +
+            `<p class="muted small">${tr.points.length} result(s)${change}. Shaded band: reference interval. ` +
+            `Red dots: critical. Orange dots: abnormal.</p>`;
+        }
+        trendCard = card('Trend', `<div class="toolbar-row">${picker}</div>${chart}`, { cls: 'grow' });
+      }
       return `<div class="toolbar-row"><input id="pt-search" class="search" placeholder="Search by name, patient ID or phone number..." ` +
         `value="${esc(this.state.term)}" data-input="patientSearch" autocomplete="off"></div>` +
         `<div class="split-v">` +
@@ -121,9 +140,13 @@
           cols: [{ h: 'Order' }, { h: 'Registered' }, { h: 'Status' }, { h: 'Tests' }, { h: 'Net amount', align: 'right' }],
           rows: history,
         }), 'grow') +
+        trendCard +
         `</div>`;
     },
-    inputs: { patientSearch(el) { this.state.term = el.value; PL.app.refresh(true); } },
+    inputs: {
+      patientSearch(el) { this.state.term = el.value; PL.app.refresh(true); },
+      trendTest(el) { this.state.trend = el.value; PL.app.refresh(); },
+    },
     dbl(tableId, id) {
       if (tableId === 'patients') PL.dialogs.editPatient(Number(id));
       if (tableId === 'phist') PL.app.go('results', Number(id));

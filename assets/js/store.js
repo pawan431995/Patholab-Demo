@@ -1378,6 +1378,28 @@
       }).sort((a, b) => b.id - a.id);
     },
     turnaround,
+    // Numeric tests this patient has results for (for the trend picker).
+    trendTests(patientId) {
+      const codes = new Set();
+      S.orders.filter((o) => o.patientId === patientId).forEach((o) => Object.entries(o.results).forEach(([c, r]) => {
+        const def = testByCode(c);
+        if (def && def.kind === 'quant' && r.value !== '' && isFinite(Number(r.value))) codes.add(c);
+      }));
+      return [...codes].map((c) => ({ code: c, name: testByCode(c).name })).sort((a, b) => a.name.localeCompare(b.name));
+    },
+    // One test over time: every saved numeric result, oldest first, with its reference interval.
+    trend(patientId, code) {
+      const def = testByCode(code);
+      const p = patientById(patientId);
+      const points = [];
+      S.orders.filter((o) => o.patientId === patientId && o.status !== 'CANCELLED').forEach((o) => {
+        const r = o.results[code];
+        if (!r || r.value === '' || !isFinite(Number(r.value))) return;
+        points.push({ t: new Date(o.registeredAt).getTime(), v: Number(r.value), flag: r.flag, order: o.orderNo, verified: r.status === 'VERIFIED' });
+      });
+      points.sort((a, b) => a.t - b.t);
+      return { name: def ? def.name : code, unit: def ? def.unit : '', points, range: def && p ? rangeFor(def, p) : null };
+    },
     dashboard() {
       const today = todayKey();
       const month = monthStartKey();

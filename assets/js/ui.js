@@ -286,9 +286,46 @@
       `<text x="${width / 2}" y="${height + 13}" text-anchor="middle" font-family="Arial" font-size="13">${esc(value)}</text></svg>`;
   }
 
+  // ---- trend chart (SVG line chart over time with the reference band) -----------
+  // points: [{t (ms), v, flag, order, verified}], range: {lo, hi, cl, ch} or null.
+  function lineChartSvg({ points, range, unit = '', width = 640, height = 220 }) {
+    const pad = { l: 52, r: 18, t: 14, b: 30 };
+    const w = width - pad.l - pad.r;
+    const h = height - pad.t - pad.b;
+    const values = points.map((p) => p.v).concat(range ? [range.lo, range.hi, range.cl, range.ch].filter((x) => x != null) : []);
+    let lo = Math.min(...values);
+    let hi = Math.max(...values);
+    if (lo === hi) { lo -= 1; hi += 1; }
+    const pad2 = (hi - lo) * 0.08;
+    lo -= pad2; hi += pad2;
+    const t0 = Math.min(...points.map((p) => p.t));
+    const t1 = Math.max(...points.map((p) => p.t));
+    const tx = (t) => pad.l + (t1 === t0 ? w / 2 : ((t - t0) / (t1 - t0)) * w);
+    const vy = (v) => pad.t + (1 - (v - lo) / (hi - lo)) * h;
+    const round = (v) => Number(v.toFixed(2));
+    const grid = [0, 1, 2, 3, 4].map((i) => {
+      const v = lo + ((hi - lo) * i) / 4;
+      return `<line x1="${pad.l}" x2="${pad.l + w}" y1="${vy(v)}" y2="${vy(v)}" class="gl"/>` +
+        `<text x="${pad.l - 6}" y="${vy(v) + 4}" text-anchor="end" class="gt">${round(v)}</text>`;
+    }).join('');
+    const band = range && range.lo != null && range.hi != null
+      ? `<rect x="${pad.l}" y="${vy(range.hi)}" width="${w}" height="${Math.max(0, vy(range.lo) - vy(range.hi))}" class="band"/>` : '';
+    const line = points.length > 1
+      ? `<polyline class="trend" points="${points.map((p) => `${tx(p.t)},${vy(p.v)}`).join(' ')}"/>` : '';
+    const dotClass = (flag) => (CRITICAL_FLAGS.includes(flag) ? 'crit' : ABNORMAL_FLAGS.includes(flag) ? 'abn' : 'ok');
+    const dots = points.map((p) => `<circle cx="${tx(p.t)}" cy="${vy(p.v)}" r="4.5" class="dot ${dotClass(p.flag)}">` +
+      `<title>${esc(fdate(new Date(p.t).toISOString()))}: ${esc(p.v)} ${esc(unit)} (${esc(p.order)})</title></circle>`).join('');
+    const xl = (t, anchor) => `<text x="${tx(t)}" y="${height - 8}" text-anchor="${anchor}" class="gt">${esc(fdate(new Date(t).toISOString()))}</text>`;
+    const xlabels = !points.length ? '' : t0 === t1 ? xl(t0, 'middle') : xl(t0, 'start') + xl(t1, 'end');
+    return `<svg class="chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Result trend">` +
+      `${band}${grid}${line}${dots}${xlabels}</svg>`;
+  }
+  const CRITICAL_FLAGS = ['CRITICAL_LOW', 'CRITICAL_HIGH'];
+  const ABNORMAL_FLAGS = ['LOW', 'HIGH', 'ABNORMAL'];
+
   PL.ui = {
     esc, money, fdate, fdt, fdtShort, badge, colourOf, FLAG_SYMBOL, FLAG_TEXT,
     card, stat, field, empty, table, toast, modal, alertBox, confirmBox, form,
-    download, printHtml, keepFocus, sel, code128Svg,
+    download, printHtml, keepFocus, sel, code128Svg, lineChartSvg,
   };
 })(window.PL = window.PL || {});
