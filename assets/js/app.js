@@ -157,7 +157,14 @@
     ['technician', 'demo123', 'Lab Technician'],
     ['reception', 'demo123', 'Receptionist'],
   ];
+  function showLanding() {
+    $('app').hidden = true;
+    $('login').hidden = true;
+    $('landing').hidden = false;
+    window.scrollTo(0, 0);
+  }
   function showLogin() {
+    $('landing').hidden = true;
     $('app').hidden = true;
     $('login').hidden = false;
     $('login-error').hidden = true;
@@ -189,6 +196,7 @@
     });
   }
   function showApp() {
+    $('landing').hidden = true;
     $('login').hidden = true;
     $('app').hidden = false;
     const user = currentUser();
@@ -216,6 +224,8 @@
       const [u, p] = b.dataset.quick.split('|');
       attemptLogin(u, p);
     });
+    $('login-back').addEventListener('click', () => showLanding());
+    document.querySelectorAll('[data-open-login]').forEach((b) => b.addEventListener('click', () => showLogin()));
     $('login-exit').addEventListener('click', () => ui.toast('In the web demo, close the browser tab to exit.', 'info'));
     $('login-reset').addEventListener('click', () => {
       ui.confirmBox('Reset demo data', 'Replace all demo data with the built-in sample data?', { danger: true, ok: 'Reset' })
@@ -325,7 +335,7 @@
     store.restoreSession();
     buildLogin();
     wire();
-    if (currentUser()) showApp(); else showLogin();
+    if (currentUser()) showApp(); else showLanding();
   }
 
   PL.app = {

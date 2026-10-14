@@ -9,9 +9,213 @@
 </head>
 <body>
 
+  <!-- Landing page: shown to visitors before sign-in -->
+  <div id="landing" class="lp" hidden>
+    <header class="lp-nav">
+      <div class="lp-brand">
+        <img src="assets/img/patholab.png" alt="" class="lp-logo">
+        <span>PathoLab</span>
+      </div>
+      <nav class="lp-links" aria-label="Page sections">
+        <a href="#features">Features</a>
+        <a href="#workflow">Workflow</a>
+        <a href="#pricing">Pricing</a>
+        <a href="#contact">Contact</a>
+      </nav>
+      <button type="button" class="primary" data-open-login>Sign in</button>
+    </header>
+
+    <section class="lp-hero">
+      <p class="lp-eyebrow">Pathology Laboratory Management</p>
+      <h1>Run your pathology lab from order to report, in one place.</h1>
+      <p class="lp-lead">PathoLab keeps patients, orders, samples, results, reports, billing and quality control together, so every person in the lab works from the same record.</p>
+      <div class="lp-cta">
+        <button type="button" class="primary lp-big" data-open-login>Try the live demo</button>
+        <a href="#features" class="lp-big lp-ghost">See what it does</a>
+      </div>
+      <p class="lp-note">No installation. Runs in your browser. All demo data is fictional.</p>
+      <ol class="lp-flow" aria-label="Lab process">
+        <li>Order</li><li>Collect</li><li>Receive</li><li>Result</li><li>Verify</li><li>Report</li><li>Bill</li>
+      </ol>
+    </section>
+
+    <section id="features" class="lp-section">
+      <h2>Everything the laboratory needs</h2>
+      <p class="lp-sub">The same screens and rules as the PathoLab desktop application.</p>
+      <div class="lp-grid">
+        <article class="lp-card">
+          <h3>Patients and orders</h3>
+          <p>Register patients once and reuse their history. Create orders with investigations or health packages, price lists, discounts and part payments.</p>
+        </article>
+        <article class="lp-card">
+          <h3>Sample tracking</h3>
+          <p>Follow every sample from collection to storage or disposal. Labels, transfers, rejections and recollections are all logged.</p>
+        </article>
+        <article class="lp-card">
+          <h3>Result entry and checks</h3>
+          <p>Numeric, qualitative, semi-quantitative and narrative results. Age and gender reference ranges, automatic high and low flags and critical-value alerts.</p>
+        </article>
+        <article class="lp-card">
+          <h3>Delta check</h3>
+          <p>Each result is compared with the patient's last verified value. Large changes need a comment before they can be verified.</p>
+        </article>
+        <article class="lp-card">
+          <h3>Reports and signatures</h3>
+          <p>Provisional and final reports with a signature code tied to the verified results. Any edit made after signing is detected.</p>
+        </article>
+        <article class="lp-card">
+          <h3>Quality and operations</h3>
+          <p>Quality control with z-score rules, inventory with lots and expiry, equipment logs, outsourced tests and analyser import (CSV, ASTM, HL7).</p>
+        </article>
+        <article class="lp-card">
+          <h3>Patient messaging</h3>
+          <p>Send report-ready and payment reminder messages. Report PDFs are sent only to patients who have agreed, and each send asks for confirmation.</p>
+        </article>
+        <article class="lp-card">
+          <h3>Billing, MIS and audit</h3>
+          <p>Receipts, invoices, doctor commission, expenses and profit and loss. Management reports on volume, turnaround and compliance, plus a tamper-evident audit log.</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="workflow" class="lp-section lp-band">
+      <h2>How a test moves through the lab</h2>
+      <p class="lp-sub">Each step is recorded, and only the allowed transitions can be used.</p>
+      <ol class="lp-steps">
+        <li><b>Register the order</b><span>The receptionist selects tests or a package and records payment.</span></li>
+        <li><b>Collect the sample</b><span>The sample is labelled, collected and received in the lab.</span></li>
+        <li><b>Enter the results</b><span>The technician enters values. Flags and alerts are applied automatically.</span></li>
+        <li><b>Verify</b><span>The pathologist checks the results, including any delta-check comments.</span></li>
+        <li><b>Issue the report</b><span>A signed report is printed, saved as PDF or shared with the patient.</span></li>
+        <li><b>Settle the bill</b><span>Dues, receipts and doctor payouts are tracked in Billing and Finance.</span></li>
+      </ol>
+    </section>
+
+    <section id="roles" class="lp-section">
+      <h2>One system, a view for every role</h2>
+      <p class="lp-sub">Each person sees only the screens and actions their role needs.</p>
+      <div class="lp-grid lp-grid-4">
+        <article class="lp-card">
+          <h3>Administrator</h3>
+          <p>Users, roles, settings, audit log, backup and integrity checks.</p>
+        </article>
+        <article class="lp-card">
+          <h3>Pathologist</h3>
+          <p>Verifies results, issues reports and reviews MIS.</p>
+        </article>
+        <article class="lp-card">
+          <h3>Lab technician</h3>
+          <p>Sample tracking, result entry and lab operations.</p>
+        </article>
+        <article class="lp-card">
+          <h3>Receptionist</h3>
+          <p>Patients, orders, test catalogue, reports and billing.</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="pricing" class="lp-section lp-band">
+      <h2>Simple pricing</h2>
+      <p class="lp-sub">Choose the plan that matches your lab. Prices are indicative and can be changed to suit you.</p>
+      <p class="lp-offer-banner"><b>Special offer:</b> up to 60% off on every plan.</p>
+      <div class="lp-grid lp-grid-3">
+        <article class="lp-card lp-price">
+          <h3>Starter</h3>
+          <span class="lp-offer">Up to 60% off</span>
+          <p class="lp-amount"><s class="lp-was">&#8377;5,000</s> &#8377;2,000<span> / year</span></p>
+          <p class="lp-saving small">Offer price at the maximum 60% discount, billed yearly</p>
+          <p class="muted">For a single collection centre.</p>
+          <ul class="lp-list">
+            <li>1 laboratory, up to 5 users</li>
+            <li>Orders, sample tracking and result entry</li>
+            <li>Reports and basic billing</li>
+            <li>Email support</li>
+          </ul>
+          <button type="button" class="lp-plan" data-open-login>Try Starter</button>
+        </article>
+        <article class="lp-card lp-price lp-featured">
+          <span class="lp-badge">Most popular</span>
+          <h3>Professional</h3>
+          <span class="lp-offer">Up to 60% off</span>
+          <p class="lp-amount"><s class="lp-was">&#8377;15,000</s> &#8377;6,000<span> / year</span></p>
+          <p class="lp-saving small">Offer price at the maximum 60% discount, billed yearly</p>
+          <p class="muted">For labs with several branches and referrers.</p>
+          <ul class="lp-list">
+            <li>Up to 3 branches, unlimited users</li>
+            <li>Everything in Starter</li>
+            <li>Quality control, inventory and analyser import</li>
+            <li>Patient messaging and MIS reports</li>
+            <li>Priority support</li>
+          </ul>
+          <button type="button" class="primary lp-plan" data-open-login>Try Professional</button>
+        </article>
+        <article class="lp-card lp-price">
+          <h3>Enterprise</h3>
+          <span class="lp-offer">Up to 60% off</span>
+          <p class="lp-amount">Custom</p>
+          <p class="muted">For hospital networks and large chains.</p>
+          <ul class="lp-list">
+            <li>Unlimited branches and users</li>
+            <li>Cloud database and sync with your server</li>
+            <li>Custom report designs and integrations</li>
+            <li>Onboarding and a named contact</li>
+          </ul>
+          <a href="#contact" class="lp-plan lp-ghost">Contact sales</a>
+        </article>
+      </div>
+    </section>
+
+    <section id="contact" class="lp-section">
+      <h2>Talk to us</h2>
+      <p class="lp-sub">Questions about the product, pricing or a trial for your lab.</p>
+      <div class="lp-contact">
+        <div class="lp-card">
+          <h3>Point of contact</h3>
+          <p><b>Sales and onboarding</b></p>
+          <p>Email: <a href="mailto:lab@example.com">lab@example.com</a></p>
+          <p>Phone: <a href="tel:+910000000000">+91 00000 00000</a></p>
+        </div>
+        <div class="lp-card">
+          <h3>Visit</h3>
+          <p>Demo Pathology Laboratory</p>
+          <p>12 Sample Street, Demo City</p>
+          <p class="muted small">Replace these details with your own before publishing.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="faq" class="lp-section lp-band">
+      <h2>Common questions</h2>
+      <div class="lp-faq">
+        <details>
+          <summary>Is patient data sent to a server?</summary>
+          <p>Not in this web demo. Everything is stored in your browser only. The desktop application keeps data on the laboratory's own computer or database server.</p>
+        </details>
+        <details>
+          <summary>Can I use the demo for real patients?</summary>
+          <p>No. The demo data is fictional and the web demo is not for clinical use.</p>
+        </details>
+        <details>
+          <summary>Does it need an internet connection?</summary>
+          <p>The web demo works offline once the page is open. The desktop application works on the lab's network.</p>
+        </details>
+        <details>
+          <summary>How do I start with my own lab?</summary>
+          <p>Contact us and we will set up your branches, test catalogue, price lists and users, then train your staff.</p>
+        </details>
+      </div>
+    </section>
+
+    <footer class="lp-footer">
+      <span>PathoLab &middot; v1.0.0</span>
+      <span>Demo data is fictional. Not for clinical use.</span>
+    </footer>
+  </div>
+
   <!-- Sign-in (mirrors ui/dialogs/login_dialog.py) -->
   <section id="login" class="login-screen" hidden>
     <div class="login-card">
+      <button type="button" id="login-back" class="link lp-back">&larr; Back to home</button>
       <div class="login-brand">
         <img src="assets/img/patholab.png" alt="" class="login-logo">
         <div>
