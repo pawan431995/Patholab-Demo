@@ -224,7 +224,8 @@ select { padding-right: 24px; }
 .stat-value { font-size: 22px; font-weight: 700; color: var(--accent-deep); font-variant-numeric: tabular-nums; }
 .stat-value.accent { color: var(--danger); }
 .stat-hint { color: var(--muted); font-size: 11px; }
-.stats-6, .stats-5, .stats-4 { display: grid; gap: 10px; }
+.stats-7, .stats-6, .stats-5, .stats-4 { display: grid; gap: 10px; }
+.stats-7 { grid-template-columns: repeat(7, minmax(0, 1fr)); }
 .stats-6 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
 .stats-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 .stats-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
@@ -432,7 +433,7 @@ body.printing #print-area { display: block; }
   .nav-item { white-space: nowrap; border-left: none; border-bottom: 3px solid transparent; padding: 10px 12px; }
   .nav-item.on { border-bottom-color: var(--accent); border-left-color: transparent; }
   .brand, .sidebar-user { display: none; }
-  .stats-6, .stats-5, .stats-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stats-7, .stats-6, .stats-5, .stats-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .split-3-2, .split-3, .split-2, .split-results, .form-grid, .role-grid { grid-template-columns: 1fr; }
   .accounts { grid-template-columns: 1fr; }
   .page-body { padding: 10px 14px; }

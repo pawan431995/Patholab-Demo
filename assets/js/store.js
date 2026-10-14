@@ -367,6 +367,18 @@
 
   const isCritical = (flag) => CRITICAL.includes(flag);
 
+  // Turnaround: due = registration + the longest turnaround among the order's tests.
+  // An order is overdue once that time passes while it is still open (not reported).
+  function turnaround(o) {
+    const hours = Math.max(1, ...o.tests.map((c) => (testByCode(c) ? Number(testByCode(c).tat) || 24 : 24)));
+    const due = new Date(new Date(o.registeredAt).getTime() + hours * 36e5);
+    const left = (due.getTime() - Date.now()) / 36e5;
+    const open = o.status !== 'REPORTED' && o.status !== 'CANCELLED';
+    let state = 'DONE';
+    if (open) state = left < 0 ? 'OVERDUE' : left <= 2 ? 'DUE_SOON' : 'ON_TIME';
+    return { due: due.toISOString(), hours, left, state };
+  }
+
   function orderTotals(o) {
     const paid = round2(sum(o.payments.map((p) => p.amount)));
     const balance = round2(o.net - paid);
@@ -472,6 +484,7 @@
       const o10 = make(9, 2, ['BIOPSY'], 'ROUTINE', 90, 0, { history: 'Lump in left breast' });
       const o11 = make(0, 0, ['MAL'], 'ROUTINE', 0.5, 0);
       make(3, 1, ['HBSAG', 'VITD'], 'ROUTINE', 10, 0);
+      make(5, 2, ['CULT'], 'ROUTINE', 80, 0); // culture is due in 72 h: already overdue
 
       // Results entry moves an order REGISTERED -> COLLECTED -> IN_PROGRESS on its own.
       fillAll(o4, true); svc.generateReport(o4.id, false);
@@ -1364,6 +1377,7 @@
         return (!t || hay.includes(t)) && (!status || s.status === status);
       }).sort((a, b) => b.id - a.id);
     },
+    turnaround,
     dashboard() {
       const today = todayKey();
       const month = monthStartKey();
@@ -1390,6 +1404,8 @@
         revenueMonth: round2(sum(payments.filter((p) => dayKey(p.at) >= month).map((p) => p.amount))),
         outstanding: round2(sum(active.map((o) => orderTotals(o).balance))),
         patientsTotal: S.patients.length,
+        overdue: active.filter((o) => turnaround(o).state === 'OVERDUE').length,
+        dueSoon: active.filter((o) => turnaround(o).state === 'DUE_SOON').length,
         days, busiest,
       };
     },

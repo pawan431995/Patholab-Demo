@@ -37,30 +37,36 @@
       const d = q.dashboard();
       const work = q.worklist().map((o) => {
         const p = patientById(o.patientId);
+        const ta = q.turnaround(o);
+        const hoursLeft = Math.abs(Math.round(ta.left));
+        const tat = ta.state === 'OVERDUE' ? badge(`Overdue ${hoursLeft}h`, 'bad')
+          : ta.state === 'DUE_SOON' ? badge(`Due in ${hoursLeft}h`, 'warn')
+          : ta.state === 'ON_TIME' ? badge(`Due in ${hoursLeft}h`, 'muted') : '-';
         return {
           id: o.id,
           cells: [
             `<b>${esc(o.orderNo)}</b>`, esc(patientName(p)), esc(ageSex(p)), esc(fdtShort(o.registeredAt)),
-            badge(label(o.status), o.status), badge(label(o.priority), o.priority),
+            badge(label(o.status), o.status), badge(label(o.priority), o.priority), tat,
           ],
-          cls: o.priority === 'STAT' ? 'row-alert' : '',
+          cls: ta.state === 'OVERDUE' || o.priority === 'STAT' ? 'row-alert' : '',
         };
       });
       const max = Math.max(1, ...d.days.map((x) => x.count));
       const bars = d.days.map((x) => `<div class="bar-row"><span>${esc(x.label)}</span>` +
         `<div class="bar"><i style="width:${(x.count / max) * 100}%"></i></div><b>${x.count}</b></div>`).join('');
-      return `<div class="stats-6">` +
+      return `<div class="stats-7">` +
         stat('Orders registered today', d.ordersToday, `${d.patientsToday} new patient(s)`) +
         stat('Tests awaiting results', d.pendingResults) +
         stat('Orders awaiting verification', d.awaitingVerify) +
+        stat('Overdue orders', d.overdue, `${d.dueSoon} due within 2 h`, d.overdue > 0) +
         stat('Reports issued today', d.reportedToday) +
         stat('Critical results today', d.criticalToday, '', true) +
         stat('Revenue today', money(d.revenueToday), `Month to date ${money(d.revenueMonth)}`) +
         `</div>` +
         `<div class="split-3-2">` +
-        card('Open worklist', table({
+        card(`Open worklist${d.overdue ? ` - ${d.overdue} overdue` : ''}`, table({
           id: 'worklist', selected: sel('worklist'), empty: 'No open orders.',
-          cols: [{ h: 'Order' }, { h: 'Patient' }, { h: 'Age/Sex' }, { h: 'Registered' }, { h: 'Status' }, { h: 'Priority' }],
+          cols: [{ h: 'Order' }, { h: 'Patient' }, { h: 'Age/Sex' }, { h: 'Registered' }, { h: 'Status' }, { h: 'Priority' }, { h: 'Turnaround' }],
           rows: work,
         })) +
         `<div class="stack">` +
