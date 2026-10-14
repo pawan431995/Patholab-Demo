@@ -784,6 +784,7 @@
       const net = round2(gross - discount);
       const paid = round2(Number(d.paid) || 0);
       if (paid < 0 || paid > net + 0.001) fail('The amount paid cannot exceed the net payable.');
+      if ((d.collectAddress || '').trim() && !(d.slot || '').trim()) fail('Choose a time slot for the home visit.');
 
       const order = {
         id: nextId('orders'), orderNo: 'ORD' + pad(++S.seq.order, 6), patientId: patient.id,
@@ -792,7 +793,8 @@
         lines, tests, discount, gross, net, payments: [], status: 'REGISTERED',
         registeredAt: nowIso(), results: {}, reportedAt: null, cancelReason: '',
         // Home collection: time slot, address to visit, and who collected (set on the route).
-        slot: (d.slot || '').trim(), collectAddress: (d.collectAddress || '').trim() || patient.address || '',
+        // An order with a collection address is a home visit (desktop: order.collect_address).
+        slot: (d.slot || '').trim(), collectAddress: (d.collectAddress || '').trim(),
         phlebotomist: '', collectedAt: null,
       };
       S.orders.push(order);
@@ -846,7 +848,7 @@
     collectHome(orderId, phlebotomist) {
       const o = orderById(orderId);
       const c = S.centres.find((x) => x.id === o.centreId);
-      if (!c || c.code !== 'HOME') fail('This order is not a home collection.');
+      if (!o.collectAddress) fail('This order is not a home visit.');
       if (!phlebotomist) fail('Choose the phlebotomist who collected the sample.');
       if (o.status !== 'REGISTERED') fail('This order has already been collected.');
       o.status = 'COLLECTED';
@@ -1534,7 +1536,7 @@
     },
     // Home collections still to visit, in slot order, then by area (last part of the address).
     homeRoute() {
-      const isHome = (o) => { const c = S.centres.find((x) => x.id === o.centreId); return !!c && c.code === 'HOME'; };
+      const isHome = (o) => !!o.collectAddress;
       const area = (o) => { const parts = (o.collectAddress || '').split(',').map((x) => x.trim()).filter(Boolean); return parts.length ? parts[parts.length - 1] : ''; };
       return S.orders.filter((o) => isHome(o) && o.status === 'REGISTERED')
         .sort((a, b) => (a.slot || '').localeCompare(b.slot || '') || area(a).localeCompare(area(b)) || a.id - b.id);

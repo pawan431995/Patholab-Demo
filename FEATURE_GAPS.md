@@ -2,39 +2,48 @@
 
 Compared against what laboratory information systems on the market typically offer
 (hospital and reference-lab LIS products, cloud LIS products, and lab systems sold in
-India), and checked against the desktop app's code (`patholab/`) and the web demo.
+India). Each gap was checked against the desktop application's code first. Missing features
+were built in the desktop application, then mirrored in the web demo.
 
-Status after this pass:
+| # | Feature | Why labs ask for it | Desktop (before) | Desktop (now) | Demo |
+|---|---------|---------------------|------------------|---------------|------|
+| 1 | Code 128 barcodes on sample labels | Scanned at receipt and at the analyser | Present | Unchanged | Done |
+| 2 | Overdue turnaround alerts on the worklist and dashboard | Missed turnaround is the main complaint | TAT only in MIS | Done (schema v7 not needed) | Done |
+| 3 | Patient result trend graph | Clinicians read trends, not single values | Previous value and % change only | Done | Done |
+| 4 | Reflex testing (add a follow-up test when a result meets a rule) | Avoids a second visit and a second sample | Missing | Done (schema v7) | Done |
+| 5 | GST tax invoices (GSTIN, GST rate, CGST / SGST, SAC) | Required for Indian billing | Missing | Done (default off, rate 0%) | Done (sample rate 18%) |
+| 6 | Home-collection route (slots, areas, phlebotomist) | Phlebotomists work from a route | Missing | Done (schema v7) | Done |
+| 7 | Report access for patients | Patients expect their reports without a visit | Missing | Done at the counter (see note) | Done (online portal) |
+| 8 | Account lock-out and password expiry | Basic access control on shared lab PCs | Missing | Done (schema v7) | Done |
 
-| # | Feature | Why labs ask for it | Desktop before | Demo before | Demo now |
-|---|---------|---------------------|----------------|-------------|----------|
-| 1 | Code 128 barcodes on sample labels | Scanned at receipt and at the analyser | Yes | Text only | Done |
-| 2 | Overdue (turnaround) alerts on the worklist and dashboard | Missed turnaround is the main complaint | TAT in MIS only | No | Done |
-| 3 | Patient result trend graph | Clinicians read trends, not single values | Previous value and % change only | No | Done |
-| 4 | Reflex testing (add a follow-up test when a result meets a rule) | Avoids a second visit and a second sample | No | No | Done |
-| 5 | GST tax invoices (GSTIN, GST rate, CGST / SGST split, SAC) | Required for Indian billing | No | No | Done |
-| 6 | Home-collection route worklist (slots, areas, phlebotomist) | Phlebotomists work from a route | No | No | Done |
-| 7 | Patient report portal (final reports and balances) | Patients expect to see reports online | No | No | Done (simulated) |
-| 8 | Account lock-out and password expiry | Basic access control on shared lab PCs | No | No | Done |
+## Desktop schema change
 
-Each row was checked against the code before it was added. For example, the desktop app has
-Code 128 label output (`reports/label_pdf.py`), previous-value and % change for delta checks
-(`services/result_service.py`), and no GST, route, portal or lock-out code.
+Schema version 7 adds: `users.failed_logins`, `users.locked_until`,
+`users.password_changed_at`, `test_definitions.reflex_when`, `test_definitions.reflex_value`,
+`test_definitions.reflex_add`, and `orders.collection_slot`, `orders.collect_address`,
+`orders.phlebotomist`. Existing databases migrate when the app starts. Take a backup first.
 
-## Still missing (not added)
+## Where the desktop and demo differ, on purpose
 
-- **Two-factor sign-in for administrators.** Needs a real one-time-code provider. A simulated
-  code would give false assurance.
-- **Worklist query to analysers (bidirectional orders).** Needs the instrument vendor's protocol
-  and hardware to test against.
+- **GST** is off on the desktop until a laboratory enters its GSTIN and rate, so existing
+  invoices do not change. The demo ships a sample laboratory with 18% so the feature is visible.
+- **Reflex rules** have no defaults on the desktop; each test's rule is set in its editor. The demo
+  ships two example rules (fasting glucose above 125 adds HbA1c; an abnormal TSH adds free T4).
+- **Patient access** on the desktop is a counter lookup: staff check the patient's ID and phone
+  number, then see final reports and balances. A patient-facing online portal needs a hosted
+  service, which is not part of the desktop app. The demo simulates that portal on the landing page.
+- **Home visits** are orders with a collection address. Both apps use the same rule.
+
+## Still missing
+
+- **Two-factor sign-in for administrators.** Needs a real one-time-code provider.
+- **Worklist query to analysers (bidirectional orders).** Needs the vendor's protocol and hardware.
 - **Live analyser connection (serial or network).** Same blocker. Files (CSV, ASTM, HL7) work.
-- **Cloud database sync.** The demo shows the settings only. The desktop sync engine is separate
-  work.
+- **Hosted patient portal** (desktop). The demo simulates it; a real one needs a server.
+- **Cloud database sync.** The demo shows the settings only.
 - **Drag-and-drop report designer.** The demo has toggles and footer text only.
 - **Culture and sensitivity panel.** Entered as descriptive text in the demo.
 - **Scheduled backups in the demo.** Backups are manual downloads.
-- **Desktop parity for this pass.** Features 2 to 8 are in the demo only. The desktop app does
-  not have them yet.
 
 ## Already present (not gaps)
 

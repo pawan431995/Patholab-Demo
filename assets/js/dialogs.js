@@ -149,7 +149,7 @@
       ctl('priority', 'ROUTINE', { label: 'Priority', select: [['ROUTINE', 'Routine'], ['URGENT', 'Urgent'], ['STAT', 'STAT']] }) +
       ctl('slot', '', { label: 'Home collection slot (if collected at home)', blank: 'Not a home collection',
         select: ['07:00-09:00', '09:00-11:00', '11:00-13:00', '16:00-18:00'].map((x) => [x, x]) }) +
-      ctl('collectAddress', '', { label: 'Collection address (blank = patient address)', full: false }) +
+      ctl('collectAddress', '', { label: 'Collection address (blank = clinic visit)', full: false }) +
       ctl('clinicalHistory', '', { label: 'Clinical history', textarea: true, full: true, rows: 2 }) +
       `</div>` +
       `<div class="split-2 gap-top">` +
