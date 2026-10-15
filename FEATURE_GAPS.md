@@ -13,8 +13,18 @@ were built in the desktop application, then mirrored in the web demo.
 | 4 | Reflex testing (add a follow-up test when a result meets a rule) | Avoids a second visit and a second sample | Missing | Done (schema v7) | Done |
 | 5 | GST tax invoices (GSTIN, GST rate, CGST / SGST, SAC) | Required for Indian billing | Missing | Done (default off, rate 0%) | Done (sample rate 18%) |
 | 6 | Home-collection route (slots, areas, phlebotomist) | Phlebotomists work from a route | Missing | Done (schema v7) | Done |
-| 7 | Report access for patients | Patients expect their reports without a visit | Missing | Done at the counter (see note) | Done (online portal) |
+| 7 | Report access for patients | Patients expect their reports without a visit | Missing | Done at the counter (see note) | Not in the demo |
 | 8 | Account lock-out and password expiry | Basic access control on shared lab PCs | Missing | Done (schema v7) | Done |
+
+## Brought in line with the desktop application
+
+These were in the desktop application but missing from the demo. The demo now shows them. The
+desktop application did not change.
+
+- **Calculated analytes**: LDL, VLDL, cholesterol / HDL ratio, and any formula a laboratory defines.
+  Derived from the order's other results, and read-only on Result Entry.
+- **Culture and sensitivity**: organism, colony count, Gram stain and an S / I / R panel with zone and
+  MIC, in place of descriptive text.
 
 ## Desktop schema change
 
@@ -30,8 +40,8 @@ Schema version 7 adds: `users.failed_logins`, `users.locked_until`,
 - **Reflex rules** have no defaults on the desktop; each test's rule is set in its editor. The demo
   ships two example rules (fasting glucose above 125 adds HbA1c; an abnormal TSH adds free T4).
 - **Patient access** on the desktop is a counter lookup: staff check the patient's ID and phone
-  number, then see final reports and balances. A patient-facing online portal needs a hosted
-  service, which is not part of the desktop app. The demo simulates that portal on the landing page.
+  number, then see final reports and balances. The demo does not show this lookup, and it has no
+  patient-facing portal, because the desktop application does not offer one.
 - **Home visits** are orders with a collection address. Both apps use the same rule.
 
 ## Still missing
@@ -39,10 +49,8 @@ Schema version 7 adds: `users.failed_logins`, `users.locked_until`,
 - **Two-factor sign-in for administrators.** Needs a real one-time-code provider.
 - **Worklist query to analysers (bidirectional orders).** Needs the vendor's protocol and hardware.
 - **Live analyser connection (serial or network).** Same blocker. Files (CSV, ASTM, HL7) work.
-- **Hosted patient portal** (desktop). The demo simulates it; a real one needs a server.
 - **Cloud database sync.** The demo shows the settings only.
 - **Drag-and-drop report designer.** The demo has toggles and footer text only.
-- **Culture and sensitivity panel.** Entered as descriptive text in the demo.
 - **Scheduled backups in the demo.** Backups are manual downloads.
 
 ## Already present (not gaps)

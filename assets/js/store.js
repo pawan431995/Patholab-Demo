@@ -131,13 +131,34 @@
   const DEPARTMENTS = ['Hematology', 'Biochemistry', 'Immunoassay', 'Serology', 'Clinical pathology',
     'Microbiology', 'Cytology', 'Histopathology', 'Molecular'];
   const KINDS = {
-    quant: 'Quantitative', choice: 'Qualitative', semi: 'Semi-quantitative',
-    text: 'Short text', desc: 'Descriptive', panel: 'Panel',
+    quant: 'Quantitative', choice: 'Qualitative', semi: 'Semi-quantitative', calc: 'Calculated',
+    culture: 'Culture & sensitivity', text: 'Short text', desc: 'Descriptive', panel: 'Panel',
   };
+  // Culture and sensitivity (the same lists as the desktop app's culture dialog).
+  const GROWTH = [
+    'No growth', 'No growth after 48 hours of aerobic incubation', 'Significant growth',
+    'Insignificant growth', 'Mixed growth of more than two organisms - suggest repeat sample',
+    'Normal commensal flora',
+  ];
+  const INTERP = [['S', 'Sensitive'], ['I', 'Intermediate'], ['R', 'Resistant']];
+  const COMMON_ORGANISMS = [
+    'Escherichia coli', 'Klebsiella pneumoniae', 'Pseudomonas aeruginosa', 'Proteus mirabilis',
+    'Enterococcus faecalis', 'Staphylococcus aureus', 'Methicillin-resistant Staphylococcus aureus (MRSA)',
+    'Coagulase-negative Staphylococcus', 'Streptococcus pyogenes', 'Streptococcus pneumoniae',
+    'Acinetobacter baumannii', 'Salmonella typhi', 'Candida albicans', 'Citrobacter freundii', 'Enterobacter cloacae',
+  ];
+  const URINE_ANTIBIOTICS = [
+    'Amoxicillin-Clavulanate', 'Nitrofurantoin', 'Cotrimoxazole', 'Ciprofloxacin',
+    'Norfloxacin', 'Cefixime', 'Ceftriaxone', 'Gentamicin', 'Amikacin',
+    'Piperacillin-Tazobactam', 'Meropenem', 'Fosfomycin',
+  ];
+  // A culture with no significant growth has no organism, so no sensitivity panel.
+  const hasGrowth = (text) => !/no growth|normal/i.test(String(text || ''));
 
   const t = (code, name, dept, kind, unit, specimen, price, o = {}) => ({
     code, name, dept, kind, unit: unit || '', specimen: specimen || '', price, tat: 24,
-    ranges: [], choices: null, normal: '', children: null, active: true, delta: null, ...o,
+    ranges: [], choices: null, normal: '', children: null, active: true, delta: null,
+    formula: '', decimals: 2, ...o,
   });
   const RG = (g, lo, hi, cl, ch, printed) => ({ g, lo, hi, cl, ch, printed: printed || '' });
   const H = 'Hematology', B = 'Biochemistry', I = 'Immunoassay', SE = 'Serology',
@@ -169,7 +190,15 @@
     t('CHOL', 'Total cholesterol', B, 'quant', 'mg/dL', SER, 70, { ranges: [RG(null, 0, 200, null, null, '< 200 desirable')] }),
     t('TG', 'Triglycerides', B, 'quant', 'mg/dL', SER, 70, { ranges: [RG(null, 0, 150)] }),
     t('HDL', 'HDL cholesterol', B, 'quant', 'mg/dL', SER, 80, { ranges: [RG('M', 40, null), RG('F', 50, null)] }),
-    t('LIPID', 'Lipid profile', B, 'panel', '', '', 400, { children: ['CHOL', 'TG', 'HDL'] }),
+    // Calculated analytes: filled in from the other results on the order (ranges as in the desktop app).
+    t('LDL', 'LDL cholesterol (Friedewald)', B, 'calc', 'mg/dL', SER, 0, {
+      formula: 'CHOL - HDL - (TG / 5)', decimals: 0, ranges: [RG(null, null, 100, null, null, '< 100 (Optimal)')],
+    }),
+    t('VLDL', 'VLDL cholesterol', B, 'calc', 'mg/dL', SER, 0, { formula: 'TG / 5', decimals: 0, ranges: [RG(null, 6, 38)] }),
+    t('CHOLHDL', 'Total cholesterol / HDL ratio', B, 'calc', '', SER, 0, {
+      formula: 'CHOL / HDL', decimals: 2, ranges: [RG(null, null, 4.5, null, null, '< 4.5')],
+    }),
+    t('LIPID', 'Lipid profile', B, 'panel', '', '', 400, { children: ['CHOL', 'TG', 'HDL', 'LDL', 'VLDL', 'CHOLHDL'] }),
     t('NA', 'Sodium', B, 'quant', 'mmol/L', SER, 70, { ranges: [RG(null, 135, 145, 120, 160)] }),
     t('K', 'Potassium', B, 'quant', 'mmol/L', SER, 70, { ranges: [RG(null, 3.5, 5.1, 2.5, 6.5)] }),
     t('TSH', 'Thyroid stimulating hormone (TSH)', I, 'quant', 'ÂµIU/mL', SER, 350, { ranges: [RG(null, 0.4, 4.0)] }),
@@ -185,7 +214,7 @@
     t('URPRO', 'Urine - protein', CP, 'semi', '', UR, 40, { choices: ['Nil', 'Trace', '1+', '2+', '3+'], normal: 'Nil' }),
     t('URPUS', 'Urine - pus cells', CP, 'text', '/hpf', UR, 40, { normal: '0-5' }),
     t('URINE', 'Urine routine', CP, 'panel', '', '', 180, { children: ['URCOL', 'URGLU', 'URPRO', 'URPUS'] }),
-    t('CULT', 'Urine culture and sensitivity', MB, 'desc', '', 'Urine (midstream)', 700, { tat: 72 }),
+    t('CULT', 'Urine culture and sensitivity', MB, 'culture', '', 'Urine (midstream)', 700, { tat: 72 }),
     t('PAP', 'Pap smear (cytology)', CY, 'desc', '', 'Cervical smear', 600, { tat: 72 }),
     t('BIOPSY', 'Histopathology - biopsy', HP, 'desc', '', 'Tissue (formalin)', 1200, { tat: 96 }),
     t('COVID', 'SARS-CoV-2 RT-PCR', MO, 'choice', '', 'Swab (nasopharyngeal)', 800, {
@@ -236,7 +265,16 @@
     S.tests.forEach((t) => {
       if (REFLEX[t.code] && !t.reflex) t.reflex = REFLEX[t.code];
       if (DELTA_LIMITS[t.code] != null && t.delta == null) t.delta = DELTA_LIMITS[t.code];
+      if (t.code === 'CULT' && t.kind === 'desc') t.kind = 'culture';
     });
+    // Calculated lipid analytes: added once, and added to the lipid panel at the same time.
+    const newCalc = CATALOG.filter((c) => ['LDL', 'VLDL', 'CHOLHDL'].includes(c.code) && !S.tests.some((t) => t.code === c.code));
+    if (newCalc.length) {
+      newCalc.forEach((c) => S.tests.push(JSON.parse(JSON.stringify(c))));
+      const lipid = S.tests.find((t) => t.code === 'LIPID');
+      if (lipid && lipid.children) newCalc.forEach((c) => { if (!lipid.children.includes(c.code)) lipid.children.push(c.code); });
+      S.orders.forEach((o) => deriveCalculated(o, patientById(o.patientId)));
+    }
     // Existing accounts start with a fresh password date, so nobody is forced to change it on upgrade.
     S.users.forEach((u) => {
       if (u.failedLogins == null) { u.failedLogins = 0; u.lockedUntil = null; }
@@ -360,7 +398,7 @@
       || test.ranges[0] || null;
   }
   function computeFlag(test, value, patient) {
-    if (test.kind === 'quant') {
+    if (test.kind === 'quant' || test.kind === 'calc') {
       const n = Number(value);
       const r = rangeFor(test, patient);
       if (!r) return 'NORMAL';
@@ -376,7 +414,7 @@
     return 'NOT_APPLICABLE';
   }
   function rangeText(test, patient) {
-    if (test.kind !== 'quant') return test.normal ? `Normal: ${test.normal}` : '';
+    if (test.kind !== 'quant' && test.kind !== 'calc') return test.normal ? `Normal: ${test.normal}` : '';
     const r = rangeFor(test, patient);
     if (!r) return '';
     if (r.printed) return r.printed;
@@ -384,6 +422,131 @@
     if (r.lo != null) return `>= ${r.lo}`;
     if (r.hi != null) return `<= ${r.hi}`;
     return '';
+  }
+
+  // ---- calculated tests: a small formula evaluator (no eval) --------------------
+  // Accepts numbers, test codes, + - * / ^, parentheses, and abs, min, max, sqrt.
+  const FORMULA_FUNCS = { abs: Math.abs, min: Math.min, max: Math.max, sqrt: Math.sqrt };
+  function parseFormula(src) {
+    const toks = String(src || '').match(/\d+(?:\.\d+)?|[A-Za-z_]\w*|[-+*/^(),]|\S/g) || [];
+    let i = 0;
+    const peek = () => toks[i];
+    const take = (want) => {
+      const tok = toks[i++];
+      if (want && tok !== want) throw new Error(`Formula: expected "${want}".`);
+      return tok;
+    };
+    const primary = () => {
+      const tok = take();
+      if (tok === undefined) throw new Error('Formula: the expression is unfinished.');
+      if (/^\d/.test(tok)) return { n: Number(tok) };
+      if (tok === '(') { const inner = expr(); take(')'); return inner; }
+      if (/^[A-Za-z_]/.test(tok)) {
+        if (peek() !== '(') return { v: tok };
+        const fn = tok.toLowerCase();
+        if (!FORMULA_FUNCS[fn]) throw new Error(`Formula: unknown function ${tok}.`);
+        take('(');
+        const args = [expr()];
+        while (peek() === ',') { take(','); args.push(expr()); }
+        take(')');
+        return { f: fn, args };
+      }
+      throw new Error(`Formula: unexpected "${tok}".`);
+    };
+    const unary = () => ((peek() === '-' || peek() === '+') ? { u: take(), a: unary() } : primary());
+    const power = () => {
+      const a = unary();
+      if (peek() !== '^') return a;
+      take();
+      return { op: '^', a, b: power() };
+    };
+    const term = () => {
+      let a = power();
+      while (peek() === '*' || peek() === '/') { const op = take(); a = { op, a, b: power() }; }
+      return a;
+    };
+    const expr = () => {
+      let a = term();
+      while (peek() === '+' || peek() === '-') { const op = take(); a = { op, a, b: term() }; }
+      return a;
+    };
+    const tree = expr();
+    if (i < toks.length) throw new Error(`Formula: unexpected "${toks[i]}".`);
+    return tree;
+  }
+  // Test codes a formula reads (function names are not codes).
+  function formulaCodes(src) {
+    const found = new Set();
+    const walk = (n) => {
+      if (!n) return;
+      if (n.v) found.add(n.v);
+      if (n.args) n.args.forEach(walk);
+      walk(n.a);
+      walk(n.b);
+    };
+    walk(parseFormula(src));
+    return [...found];
+  }
+  // Value of a formula, or null while an input is missing or the result is not a finite number.
+  function evalNode(n, vars) {
+    if (n.n !== undefined) return n.n;
+    if (n.v !== undefined) return vars[n.v] == null ? null : vars[n.v];
+    if (n.f) {
+      const xs = n.args.map((a) => evalNode(a, vars));
+      return xs.some((x) => x === null) ? null : FORMULA_FUNCS[n.f](...xs);
+    }
+    const x = evalNode(n.a, vars);
+    if (n.u) return x === null ? null : (n.u === '-' ? -x : x);
+    const y = evalNode(n.b, vars);
+    if (x === null || y === null) return null;
+    const r = { '+': x + y, '-': x - y, '*': x * y, '/': x / y, '^': x ** y }[n.op];
+    return Number.isFinite(r) ? r : null;
+  }
+  const evalFormula = (src, vars) => evalNode(parseFormula(src), vars);
+
+  // One entered result, with its flag, previous verified value and delta check.
+  function buildResult(o, def, raw, patient, cur, comment) {
+    const flag = computeFlag(def, raw, patient);
+    const prev = previousVerified(o, def.code);
+    const numeric = (def.kind === 'quant' || def.kind === 'calc') && isFinite(Number(raw));
+    const pct = numeric && prev && prev.value ? round1((Number(raw) - prev.value) / Math.abs(prev.value) * 100) : null;
+    return {
+      value: raw, flag, status: 'ENTERED', by: actor(), at: nowIso(), verifiedBy: '', verifiedAt: '', notified: null,
+      comment: comment != null ? String(comment).trim() : ((cur && cur.comment) || ''),
+      prev: prev ? { text: prev.text, value: prev.value, at: prev.at } : null,
+      delta: pct,
+      deltaFlag: pct != null && def.delta != null && Math.abs(pct) > def.delta,
+    };
+  }
+
+  // Calculated tests take their value from the order's other results, as in the desktop app.
+  // They are never typed in, and they clear again when an input is removed.
+  function deriveCalculated(o, patient) {
+    const calcs = o.tests.map(testByCode).filter((d) => d && d.kind === 'calc');
+    if (!calcs.length) return;
+    const inputs = {};
+    o.tests.forEach((c) => {
+      const d = testByCode(c);
+      const r = o.results[c];
+      if (d && d.kind === 'quant' && r && r.value !== '' && isFinite(Number(r.value))) inputs[c] = Number(r.value);
+    });
+    const safe = (src, vars) => { try { return evalFormula(src, vars); } catch (e) { return null; } };
+    // A formula may read another calculated test, so repeat until the values settle.
+    let vars = { ...inputs };
+    for (let pass = 0; pass <= calcs.length; pass++) {
+      const next = { ...inputs };
+      calcs.forEach((d) => { const v = safe(d.formula, vars); if (v !== null) next[d.code] = v; });
+      const settled = JSON.stringify(next) === JSON.stringify(vars);
+      vars = next;
+      if (settled) break;
+    }
+    calcs.forEach((d) => {
+      const cur = o.results[d.code];
+      if (cur && cur.status === 'VERIFIED') return;
+      if (vars[d.code] === undefined) { if (cur) delete o.results[d.code]; return; }
+      const raw = String(Number(vars[d.code].toFixed(Number(d.decimals) || 0)));
+      o.results[d.code] = buildResult(o, d, raw, patient, cur, undefined);
+    });
   }
 
   const isCritical = (flag) => CRITICAL.includes(flag);
@@ -489,8 +652,10 @@
         return o;
       };
       const fillAll = (o, reviewer) => {
-        const entries = o.tests.map((c) => ({ code: c, value: sampleValue(testByCode(c), patientById(o.patientId), o.tests.indexOf(c)) }));
-        svc.saveResults(o.id, entries);
+        const patient = patientById(o.patientId);
+        const typed = o.tests.filter((c) => !['calc', 'culture'].includes(testByCode(c).kind));
+        o.tests.filter((c) => testByCode(c).kind === 'culture').forEach((c) => svc.saveCulture(o.id, c, { growth: 'No growth' }));
+        if (typed.length) svc.saveResults(o.id, typed.map((c) => ({ code: c, value: sampleValue(testByCode(c), patient, o.tests.indexOf(c)) })));
         if (reviewer) svc.verifyResults(o.id);
       };
 
@@ -894,6 +1059,7 @@
       entries.forEach(({ code, value, comment }) => {
         if (!o.tests.includes(code)) return;
         const def = testByCode(code);
+        if (def.kind === 'calc' || def.kind === 'culture') return; // filled in by the rules below
         const cur = o.results[code];
         if (cur && cur.status === 'VERIFIED') return;
         const raw = value == null ? '' : String(value).trim();
@@ -905,22 +1071,12 @@
         if (def.kind === 'choice' || def.kind === 'semi') {
           if (!def.choices.includes(raw)) fail(`${def.name}: choose one of the listed values.`);
         }
-        const flag = computeFlag(def, raw, patient);
-        // Delta check against the previous verified value of this test for this patient.
-        const prev = previousVerified(o, code);
-        const numeric = def.kind === 'quant' && isFinite(Number(raw));
-        const pct = numeric && prev && prev.value ? round1((Number(raw) - prev.value) / Math.abs(prev.value) * 100) : null;
-        o.results[code] = {
-          value: raw, flag, status: 'ENTERED', by: actor(), at: nowIso(), verifiedBy: '', verifiedAt: '', notified: null,
-          comment: comment != null ? String(comment).trim() : ((cur && cur.comment) || ''),
-          prev: prev ? { text: prev.text, value: prev.value, at: prev.at } : null,
-          delta: pct,
-          deltaFlag: pct != null && def.delta != null && Math.abs(pct) > def.delta,
-        };
+        o.results[code] = buildResult(o, def, raw, patient, cur, comment);
         saved++;
-        if (isCritical(flag)) criticals.push(def.name);
+        if (isCritical(o.results[code].flag)) criticals.push(def.name);
       });
       if (!saved) fail('Enter at least one result before saving.');
+      deriveCalculated(o, patient);
       // Reflex testing: a saved result that meets a rule adds its follow-up tests to this order.
       const reflexes = [];
       entries.forEach(({ code }) => {
@@ -936,6 +1092,47 @@
       persist('results.save', `${o.orderNo}: ${saved} value(s)`);
       save();
       return { saved, criticals, reflexes };
+    },
+    // Culture and sensitivity (desktop: culture dialog). Growth, organism, colony count, Gram stain,
+    // the S / I / R panel and remarks. The order line shows the organism, or the growth if none.
+    saveCulture(orderId, code, d) {
+      const o = orderById(orderId);
+      if (o.status === 'CANCELLED') fail('Cancelled orders cannot take results.');
+      const def = testByCode(code);
+      if (!def || def.kind !== 'culture' || !o.tests.includes(code)) fail('That is not a culture test on this order.');
+      const cur = o.results[code];
+      if (cur && cur.status === 'VERIFIED') fail(`${def.name} is already verified.`);
+      const growth = String(d.growth || '').trim();
+      if (!growth) fail('Select or type the growth observed.');
+      const growing = hasGrowth(growth);
+      const organism = growing ? String(d.organism || '').trim() : '';
+      if (growing && !organism) fail('Significant growth was selected - name the organism isolated.');
+      const colony = growing ? String(d.colony || '').trim() : '';
+      const gram = growing ? String(d.gram || '').trim() : '';
+      const sensitivities = [];
+      if (growing) (d.sens || []).forEach((s) => {
+        const antibiotic = String(s.antibiotic || '').trim();
+        const zone = s.zone === '' || s.zone == null ? null : Number(s.zone);
+        const mic = String(s.mic || '').trim();
+        if (!antibiotic) return;
+        // An antibiotic left without a result is not reported. A zone or MIC needs a result.
+        if (!INTERP.some(([v]) => v === s.interpretation)) {
+          if (zone != null || mic) fail(`Choose S, I or R for ${antibiotic}.`);
+          return;
+        }
+        sensitivities.push({ antibiotic, interpretation: s.interpretation, zone, mic });
+      });
+      o.results[code] = {
+        value: growing ? `${organism}${colony ? ` (${colony})` : ''}` : growth,
+        flag: 'NOT_APPLICABLE', status: 'ENTERED', by: actor(), at: nowIso(), verifiedBy: '', verifiedAt: '',
+        notified: null, comment: (cur && cur.comment) || '', prev: null, delta: null, deltaFlag: false,
+        culture: { growth, organism, colony, gram, remarks: String(d.remarks || '').trim(), sensitivities },
+      };
+      if (o.status === 'REGISTERED') o.status = 'COLLECTED';
+      if (o.status === 'COLLECTED') o.status = 'IN_PROGRESS';
+      persist('results.culture', `${o.orderNo}: ${def.name}`);
+      save();
+      return o.results[code];
     },
     verifyResults(orderId) {
       const o = orderById(orderId);
@@ -1016,11 +1213,21 @@
       const price = Number(d.price);
       if (!(price >= 0)) fail('Price must be zero or more.');
       if ((d.kind === 'choice' || d.kind === 'semi') && (!d.choices || d.choices.length < 2)) fail('Enter at least two choices.');
+      const formula = d.kind === 'calc' ? String(d.formula || '').trim() : '';
+      if (d.kind === 'calc') {
+        if (!formula) fail('A calculated test needs a formula.');
+        let codes;
+        try { codes = formulaCodes(formula); } catch (e) { fail(e.message); }
+        if (codes.includes(testCode)) fail('A formula cannot use the test it belongs to.');
+        const unknown = codes.filter((c) => !testByCode(c));
+        if (unknown.length) fail(`The formula uses unknown test codes: ${unknown.join(', ')}.`);
+      }
       const rec = {
         code: testCode, name, dept: d.dept || 'Other', kind: d.kind, unit: d.unit || '',
         specimen: d.kind === 'panel' ? '' : (d.specimen || 'Serum'), price, tat: Number(d.tat) || 24,
         ranges: (d.ranges || []).filter((r) => r.lo != null || r.hi != null),
         choices: d.choices || null, normal: d.normal || '', children: d.children || null, active: d.active !== false,
+        formula, decimals: d.decimals === '' || d.decimals == null ? 2 : Math.min(4, Math.max(0, Math.round(Number(d.decimals)) || 0)),
       };
       if (code) {
         const old = testByCode(code);
@@ -1032,6 +1239,7 @@
         S.tests.push(rec);
         persist('catalog.create', testCode);
       }
+      S.orders.forEach((o) => deriveCalculated(o, patientById(o.patientId)));
       save();
     },
     savePackage(d, id) {
@@ -1525,15 +1733,6 @@
       }).sort((a, b) => b.id - a.id);
     },
     turnaround,
-    // Patient portal: a patient matches on MRN and the phone number we hold. Only final reports are shown.
-    portalLookup(mrn, phone) {
-      const digits = (v) => String(v || '').replace(/\D/g, '').slice(-10);
-      const p = S.patients.find((x) => x.mrn === String(mrn || '').trim().toUpperCase());
-      if (!p || digits(phone).length < 10 || digits(p.phone) !== digits(phone)) return null;
-      const orders = S.orders.filter((o) => o.patientId === p.id && o.status !== 'CANCELLED').sort((a, b) => b.id - a.id);
-      const reports = S.reports.filter((r) => r.type === 'Final' && orders.some((o) => o.id === r.orderId));
-      return { patient: p, orders: orders.map((o) => ({ order: o, balance: orderTotals(o).balance })), reports };
-    },
     // Home collections still to visit, in slot order, then by area (last part of the address).
     homeRoute() {
       const isHome = (o) => !!o.collectAddress;
@@ -1546,7 +1745,7 @@
       const codes = new Set();
       S.orders.filter((o) => o.patientId === patientId).forEach((o) => Object.entries(o.results).forEach(([c, r]) => {
         const def = testByCode(c);
-        if (def && def.kind === 'quant' && r.value !== '' && isFinite(Number(r.value))) codes.add(c);
+        if (def && (def.kind === 'quant' || def.kind === 'calc') && r.value !== '' && isFinite(Number(r.value))) codes.add(c);
       }));
       return [...codes].map((c) => ({ code: c, name: testByCode(c).name })).sort((a, b) => a.name.localeCompare(b.name));
     },
@@ -1701,5 +1900,6 @@
     testByCode, patientById, patientName, doctorById, orderById, sampleById, orderTotals, pendingCount,
     orderSummary, computeFlag, rangeText, isCritical, leaves, priceOf, defaultPriceList, verifyAudit,
     commissionDue, inventoryStatus, equipmentStatus: q.equipmentStatus,
+    GROWTH, INTERP, COMMON_ORGANISMS, URINE_ANTIBIOTICS, hasGrowth,
   };
 })(window.PL = window.PL || {});

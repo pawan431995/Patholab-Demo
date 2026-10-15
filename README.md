@@ -29,9 +29,9 @@ No build step, no server, no dependencies. It runs fully offline.
 - **Patients**: register, edit, search, order history, delete (when no orders).
 - **Orders**: new order (investigations and health packages, price lists, discount,
   part payment), filters, status moves (collect, receive, cancel).
-- **Result Entry**: numeric, qualitative, semi-quantitative, text and narrative results.
-  Reference ranges by gender and age, automatic L / H / LL / HH flags, critical-value
-  alerts and notification, verify, provisional and final reports.
+- **Result Entry**: numeric, qualitative, semi-quantitative, text and narrative results, plus
+  calculated analytes and culture and sensitivity. Reference ranges by gender and age, automatic
+  L / H / LL / HH flags, critical-value alerts and notification, verify, provisional and final reports.
 - **Sample Tracking**: collect, receive, process, store, move, reject, recollection,
   dispose, history and label printing, with the same allowed transitions as the desktop app.
 - **Lab Operations**: critical values, outsourced tests, inventory with lots and expiry
@@ -80,7 +80,8 @@ Signing in on another browser or device starts from the built-in sample data.
   the local SQLite database kept as the working copy.
 - Digital signatures here are a checksum of the results, not a cryptographic signature. The
   desktop app signs reports with an Ed25519 key.
-- Culture and sensitivity is entered as descriptive text.
+- Culture and sensitivity uses the desktop's fields, but every culture offers the urine antibiotic
+  panel; the desktop chooses the panel by specimen.
 - The report designer offers toggles and footer text, not drag-and-drop layout.
 - Backups are manual downloads; there is no scheduled backup.
 - Licence activation is not applicable, and roles are read-only.
@@ -104,9 +105,13 @@ See [FEATURE_GAPS.md](FEATURE_GAPS.md) for the market comparison behind these.
 - **Home-collection route**: on **Sample Tracking**, the "Home collection route" tab lists home
   visits by time slot and area. Record who collected each visit, and its samples are collected in
   one step. Set a slot and address on new orders.
-- **Patient report portal**: the landing page's **Patient portal** button lets a patient see their
-  final reports and balances with their patient ID and the phone number on file. Three wrong tries
-  lock the form. This is simulated, with no real patient login.
+- **Calculated analytes**: LDL (Friedewald), VLDL and total cholesterol / HDL ratio are filled in from
+  the order's cholesterol, triglyceride and HDL results. They are read-only on Result Entry and clear
+  again if an input is removed. Define your own in **Test Catalog** with the result type set to
+  Calculated and a formula such as `CHOL - HDL - (TG / 5)`.
+- **Culture and sensitivity**: the urine culture opens a culture dialog with growth observed, organism,
+  colony count, Gram stain and an S / I / R panel with zone and MIC. It prints on the report. Growth
+  of "No growth" clears the organism and panel, as on the desktop.
 - **Account lock-out and password expiry**: five wrong passwords lock an account for 15 minutes,
   and an administrator can unlock it under **Tools > Manage Users**. A password older than 90 days
   must be changed at sign-in.

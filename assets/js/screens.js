@@ -292,6 +292,11 @@
           } else if (def.kind === 'choice' || def.kind === 'semi') {
             input = `<select data-res="${code}" ${locked ? 'disabled' : ''}><option value=""></option>` +
               def.choices.map((c) => `<option ${c === value ? 'selected' : ''}>${esc(c)}</option>`).join('') + '</select>';
+          } else if (def.kind === 'calc') {
+            // Read-only: filled in from the other results once their values are saved.
+            input = value !== '' ? `<b>${esc(value)}</b> <span class="muted small">calculated</span>` : '<span class="muted small">Needs other results</span>';
+          } else if (def.kind === 'culture') {
+            input = `<button type="button" data-act="culture" data-code="${code}" ${locked ? 'disabled' : ''}>${r ? esc(value) : 'Enter culture'}</button>`;
           } else {
             input = `<textarea data-res="${code}" rows="2" ${locked ? 'disabled' : ''}>${esc(value)}</textarea>`;
           }
@@ -333,6 +338,10 @@
           if (criticals.length) PL.dialogs.criticalAlert(o, criticals);
           PL.app.refresh();
         } catch (e) { PL.app.handle(e, 'Results not saved'); }
+      },
+      culture(el) {
+        const o = this.state.orderId ? orderById(this.state.orderId) : null;
+        if (o) PL.dialogs.culture(o, el.dataset.code);
       },
       verifyAll() {
         const o = this.state.orderId ? orderById(this.state.orderId) : null;

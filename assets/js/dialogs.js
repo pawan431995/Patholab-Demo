@@ -8,7 +8,8 @@
   const { S, svc, q } = { S: PL.store.S, svc: PL.store.svc, q: PL.store.q };
   const { esc, money, fdate, fdt, fdtShort, badge, form, modal, alertBox, confirmBox, toast, table, printHtml, card } = PL.ui;
   const { label, patientById, patientName, doctorById, orderById, orderTotals, testByCode, computeFlag, rangeText, isCritical, ageYears, priceOf, defaultPriceList, todayKey, DEPARTMENTS, KINDS, CONTAINER, PERM_GROUPS, ROLES, DomainError } = PL.store;
-  const EXPENSE_CATEGORIES = ['Reagents', 'Consumables', 'Salaries', 'Rent', 'Utilities', 'Equipment maintenance', 'Courier / transport', 'Marketing', 'Other'];
+  const { GROWTH, INTERP, COMMON_ORGANISMS, URINE_ANTIBIOTICS, hasGrowth } = PL.store;
+  const EXPENSE_CATEGORIES =['Reagents', 'Consumables', 'Salaries', 'Rent', 'Utilities', 'Equipment maintenance', 'Courier / transport', 'Marketing', 'Other'];
   const PAY_METHODS = [['CASH', 'Cash'], ['CARD', 'Card'], ['UPI', 'UPI'], ['CHEQUE', 'Cheque'], ['BANK_TRANSFER', 'Bank transfer']];
   const opts = (list, selected, blank) => (blank != null ? [['', blank]] : []).concat(list)
     .map(([v, t]) => `<option value="${esc(v)}" ${String(v) === String(selected == null ? '' : selected) ? 'selected' : ''}>${esc(t)}</option>`).join('');
@@ -284,11 +285,13 @@
       ctl('tat', t ? t.tat : 24, { label: 'Turnaround (hours)', type: 'number' }) +
       ctl('choices', t && t.choices ? t.choices.join(', ') : '', { label: 'Choices (comma separated, for qualitative / semi-quantitative)', full: true }) +
       ctl('normal', t ? t.normal : '', { label: 'Normal value (text or one of the choices)' }) +
+      ctl('formula', t ? t.formula || '' : '', { label: 'Formula (calculated tests: test codes, e.g. CHOL - HDL - (TG / 5))', full: true }) +
+      ctl('decimals', t ? t.decimals : 2, { label: 'Decimal places (calculated tests)', type: 'number' }) +
       ctl('children', t && t.children ? t.children.join(', ') : '', { label: 'Panel tests (codes, comma separated)', full: true }) +
       check('active', t ? t.active : true, 'Active (can be ordered)') +
       `</div>`;
     const ranges = t && t.ranges.length ? t.ranges : [{}];
-    const rangeHtml = `<p class="muted small">Used for quantitative tests only. Leave Low or High blank for one-sided ranges.</p>` +
+    const rangeHtml = `<p class="muted small">Used for quantitative and calculated tests. Leave Low or High blank for one-sided ranges.</p>` +
       `<table class="grid"><thead><tr><th>Gender</th><th>Low</th><th>High</th><th>Critical low</th><th>Critical high</th><th>Printed as</th><th></th></tr></thead>` +
       `<tbody id="rr-body">${ranges.map((r) => rangeRow(r)).join('')}</tbody></table>` +
       `<p><button type="button" data-add-range>Add range</button></p>`;
@@ -301,6 +304,7 @@
           price: v.price, tat: v.tat, active: v.active,
           choices: v.choices ? v.choices.split(',').map((s) => s.trim()).filter(Boolean) : null,
           normal: v.normal, children: v.children ? v.children.split(',').map((s) => s.trim().toUpperCase()).filter(Boolean) : null,
+          formula: v.formula, decimals: v.decimals,
         };
         if (values.kind === 'panel') {
           values.children = (values.children || []).filter((c) => testByCode(c) && testByCode(c).kind !== 'panel');
@@ -321,6 +325,93 @@
       }
       const del = e.target.closest('[data-del]');
       if (del) del.closest('tr').remove();
+    });
+  }
+
+  // ---- culture and sensitivity (desktop: culture dialog) --------------------------------
+  const INTERP_LABEL = Object.fromEntries(INTERP);
+  // The culture as printed: growth or organism, colony count, Gram stain, S / I / R table, remarks.
+  function cultureHtml(r) {
+    const c = r.culture;
+    if (!c) return esc(r.value);
+    const head = hasGrowth(c.growth)
+      ? `<b>${esc(c.organism)}</b>${c.colony ? `, ${esc(c.colony)}` : ''}${c.gram ? ` (${esc(c.gram)})` : ''}`
+      : esc(c.growth);
+    const rows = c.sensitivities.map((s) => `<tr><td>${esc(s.antibiotic)}</td><td>${esc(INTERP_LABEL[s.interpretation] || '')}</td>` +
+      `<td>${s.zone == null ? '' : esc(s.zone)}</td><td>${esc(s.mic)}</td></tr>`).join('');
+    const table = rows ? `<table class="rp-table"><thead><tr><th>Antibiotic</th><th>Result</th><th>Zone (mm)</th><th>MIC</th></tr></thead>` +
+      `<tbody>${rows}</tbody></table>` : '';
+    return `<div>${head}</div>${c.remarks ? `<div class="small">${esc(c.remarks)}</div>` : ''}${table}`;
+  }
+  const sensRow = (s) => `<tr data-sens>` +
+    `<td><input data-f="antibiotic" style="width:100%" value="${esc(s.antibiotic || '')}"></td>` +
+    `<td><select data-f="interpretation" style="width:100%">${opts(INTERP, s.interpretation, '-')}</select></td>` +
+    `<td><input data-f="zone" type="number" step="any" style="width:100%" value="${esc(s.zone ?? '')}"></td>` +
+    `<td><input data-f="mic" style="width:100%" value="${esc(s.mic || '')}"></td>` +
+    `<td><button type="button" class="danger" data-del>×</button></td></tr>`;
+  // Culture entry for one test on an order. A new culture starts with the urine panel.
+  function cultureDialog(o, code) {
+    const def = testByCode(code);
+    const r = o.results[code];
+    const c = (r && r.culture) || { growth: '', organism: '', colony: '', gram: '', remarks: '', sensitivities: [] };
+    const sens = r && r.culture ? c.sensitivities : URINE_ANTIBIOTICS.map((antibiotic) => ({ antibiotic }));
+    const organisms = COMMON_ORGANISMS.map((x) => `<option value="${esc(x)}">`).join('');
+    const body = `<div class="form-grid">` +
+      `<div class="field full"><span>Growth observed</span><select data-f="growth">${opts(GROWTH.map((g) => [g, g]), c.growth, '')}</select></div>` +
+      `<div class="field"><span>Organism isolated</span><input data-f="organism" list="org-list" value="${esc(c.organism)}">` +
+      `<datalist id="org-list">${organisms}</datalist></div>` +
+      `<div class="field"><span>Colony count</span><input data-f="colony" value="${esc(c.colony)}" placeholder="e.g. &gt; 10^5 cfu/mL"></div>` +
+      `<div class="field"><span>Gram stain</span><input data-f="gram" value="${esc(c.gram)}" placeholder="e.g. Gram negative bacilli"></div>` +
+      `<div class="field full" data-sens-box><span>Sensitivity panel</span>` +
+      `<table class="grid" style="table-layout:fixed"><colgroup><col style="width:36%"><col style="width:20%"><col style="width:14%"><col style="width:22%"><col style="width:8%"></colgroup>` +
+      `<thead><tr><th>Antibiotic</th><th>Result</th><th>Zone (mm)</th><th>MIC</th><th></th></tr></thead>` +
+      `<tbody id="sens-body">${sens.map(sensRow).join('')}</tbody></table>` +
+      `<p><button type="button" data-add-sens>Add antibiotic</button></p></div>` +
+      `<div class="field full"><span>Remarks</span><textarea data-f="remarks" rows="2">${esc(c.remarks)}</textarea></div>` +
+      `</div><div class="form-error" hidden></div>`;
+    modal({
+      title: `Culture & Sensitivity - ${def.name}`, width: 760, body,
+      onOpen: (x) => {
+        const growth = x.body.querySelector('[data-f="growth"]');
+        // No growth means no organism, colony, stain or sensitivities, as in the desktop app.
+        const sync = () => {
+          const growing = hasGrowth(growth.value);
+          ['organism', 'colony', 'gram'].forEach((f) => { x.body.querySelector(`[data-f="${f}"]`).disabled = !growing; });
+          x.body.querySelectorAll('[data-sens-box] input, [data-sens-box] select, [data-sens-box] button').forEach((el) => { el.disabled = !growing; });
+        };
+        growth.addEventListener('change', sync);
+        sync();
+        x.body.addEventListener('click', (e) => {
+          if (e.target.closest('[data-add-sens]')) x.body.querySelector('#sens-body').insertAdjacentHTML('beforeend', sensRow({}));
+          const del = e.target.closest('[data-del]');
+          if (del) del.closest('tr').remove();
+        });
+      },
+      buttons: [{ label: 'Cancel' }, {
+        label: 'Save culture', primary: true, onClick: (x) => {
+          const v = (f) => x.body.querySelector(`[data-f="${f}"]`).value;
+          const err = x.body.querySelector('.form-error');
+          const sensitivities = [...x.body.querySelectorAll('#sens-body tr')].map((tr) => ({
+            antibiotic: tr.querySelector('[data-f="antibiotic"]').value,
+            interpretation: tr.querySelector('[data-f="interpretation"]').value,
+            zone: tr.querySelector('[data-f="zone"]').value,
+            mic: tr.querySelector('[data-f="mic"]').value,
+          }));
+          try {
+            svc.saveCulture(o.id, code, {
+              growth: v('growth'), organism: v('organism'), colony: v('colony'), gram: v('gram'),
+              remarks: v('remarks'), sens: sensitivities,
+            });
+            x.close();
+            toast(`${def.name} saved`, 'ok');
+            PL.app.refresh();
+          } catch (e) {
+            if (!(e instanceof DomainError)) throw e;
+            err.textContent = e.message;
+            err.hidden = false;
+          }
+        },
+      }],
     });
   }
 
@@ -517,7 +608,8 @@
         const r = o.results[c];
         if (!r) return `<tr><td>${esc(t.name)}</td><td colspan="4" class="muted">Pending</td></tr>`;
         const flag = r.flag && r.flag !== 'NORMAL' && r.flag !== 'NOT_APPLICABLE' ? ` <b>${esc(PL.ui.FLAG_SYMBOL[r.flag] || '')}</b>` : '';
-        const shown = t.kind === 'desc' || t.kind === 'text' ? esc(r.value).replace(/\n/g, '<br>') : esc(r.value) + flag;
+        const shown = t.kind === 'culture' ? cultureHtml(r)
+          : t.kind === 'desc' || t.kind === 'text' ? esc(r.value).replace(/\n/g, '<br>') : esc(r.value) + flag;
         const prevLine = r.prev ? `<div class="muted small">Previous ${esc(r.prev.text)} (${esc(fdate(r.prev.at))})` +
           (r.delta != null ? `, change ${r.delta > 0 ? '+' : ''}${r.delta}%` : '') + '</div>' : '';
         return `<tr><td>${esc(t.name)}</td><td class="${isCritical(r.flag) ? 'crit' : ''}">${shown}${prevLine}</td>` +
@@ -988,53 +1080,6 @@
     });
   }
 
-  // Patient portal (simulated): a patient finds their own final reports with their patient ID
-  // and the phone number on file. Three wrong tries in one visit lock the form.
-  function portal() {
-    let tries = 0;
-    const ctx = modal({
-      title: 'Patient portal', width: 680,
-      body: `<p class="muted">Enter your patient ID (MRN) and the phone number we have on file to see your final reports and balances.</p>` +
-        `<div class="form-grid">` + ctl('mrn', '', { label: 'Patient ID (MRN)', placeholder: 'P000001' }) +
-        ctl('phone', '', { label: 'Phone number on file' }) + `</div>` +
-        `<p class="muted small">Demo: use any patient's ID and phone number from the Patients screen.</p>` +
-        `<div class="form-error" hidden></div>`,
-      buttons: [
-        { label: 'Close' },
-        { label: 'Find my reports', primary: true, onClick: (c) => {
-          const err = c.body.querySelector('.form-error');
-          const fail = (message) => { err.textContent = message; err.hidden = false; };
-          if (tries >= 3) { fail('Too many attempts. Close this window and try again later.'); return; }
-          const v = readAll(c.body);
-          const found = PL.store.q.portalLookup(v.mrn, v.phone);
-          if (!found) { tries++; fail('We could not match those details. Check the patient ID and phone number.'); return; }
-          c.body.innerHTML = portalResults(found);
-        } },
-      ],
-    });
-    ctx.body.addEventListener('click', (e) => {
-      const b = e.target.closest('[data-view]');
-      if (!b) return;
-      const rec = S.reports.find((r) => r.id === Number(b.dataset.view));
-      if (rec) reportPreview(rec);
-    });
-  }
-  function portalResults(f) {
-    const p = f.patient;
-    const rows = f.orders.map(({ order: o, balance }) => {
-      const rep = f.reports.find((r) => r.orderId === o.id);
-      return `<tr><td><b>${esc(o.orderNo)}</b></td><td>${esc(fdate(o.registeredAt))}</td><td>${esc(label(o.status))}</td>` +
-        `<td class="al-right">${balance > 0.005 ? `<span class="warn-text">${money(balance)} due</span>` : 'Paid'}</td>` +
-        `<td>${rep ? `<button type="button" data-view="${rep.id}">View report</button>` : '<span class="muted">Not ready</span>'}</td></tr>`;
-    }).join('');
-    return `<p>Hello <b>${esc(p.firstName)}</b>. Your patient ID is <b>${esc(p.mrn)}</b>.</p>` +
-      (rows
-        ? `<div class="grid-wrap"><table class="grid"><thead><tr><th>Order</th><th>Registered</th><th>Status</th>` +
-          `<th class="al-right">Balance</th><th>Report</th></tr></thead><tbody>${rows}</tbody></table></div>`
-        : '<p class="muted">No orders on record.</p>') +
-      `<p class="muted small">Reports show final, verified results only. Any balance is paid at the laboratory reception.</p>`;
-  }
-
   function isLocked(u) {
     return !!u.lockedUntil && new Date(u.lockedUntil).getTime() > Date.now();
   }
@@ -1108,9 +1153,9 @@
     newOrder, receivePayment, notifyCritical, criticalAlert, editTest, sendOut,
     item, stockIn, stockOut, stockCount, qc: qcDialog, equipment: equipmentDialog, equipmentLog,
     commissionRule, payout, expense,
-    deltaComment, whatsapp: whatsappDialog, cloudSync: cloudSyncDialog,
+    deltaComment, culture: cultureDialog, whatsapp: whatsappDialog, cloudSync: cloudSyncDialog,
     reportHtml, reportPreview, invoiceHtml, receiptHtml,
     settings, reportDesigner, packages, masters, users, roles, audit: auditDialog,
-    dataTools, changePassword, license, about, forcedPassword, portal,
+    dataTools, changePassword, license, about, forcedPassword,
   };
 })(window.PL = window.PL || {});
